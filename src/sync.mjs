@@ -1,4 +1,5 @@
 // Sincroniza el calendario de la FBPA con la lista Calendario del portal y genera los .ics públicos.
+// Permiso Sites.Selected (write) concedido sobre PortalCBP el 2026-11-08.
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { leerPartidos } from './fbpa.mjs';
 
