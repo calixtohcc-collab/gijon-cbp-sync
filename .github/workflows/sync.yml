@@ -5,6 +5,9 @@ on:
     - cron: '30 22 * * *'   # cada noche (23:30 en Gijón en horario de invierno)
     - cron: '0 15 * * 6,0'  # sábados y domingos por la tarde, para recoger resultados
   workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths: ['src/**', '.github/workflows/**']
 
 permissions:
   id-token: write   # identidad federada con Microsoft, sin contraseñas

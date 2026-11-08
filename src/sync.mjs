@@ -5,7 +5,7 @@ import { leerPartidos } from './fbpa.mjs';
 const CFG = {
   fbpa: 'https://www.fbpa.es/resultados-club-7954/cb-pumarin',
   tenant: process.env.TENANT_ID || '92d41dc0-249a-4073-bd9e-d966005c3a94',
-  clientId: process.env.CLIENT_ID,
+  clientId: process.env.CLIENT_ID || '17a79756-e595-41f7-a55e-2d616c4a9d6c',
   site: 'gijoncbp.sharepoint.com,fbb8e2b4-653c-490e-8463-9062314c2408,429a1159-19a6-4d88-bfb6-d7f6ed32f48c',
   listaCalendario: '86cc3ca3-467f-43ca-8b33-eb994839eb5f',
   listaAvisos: 'e451e830-802b-4d55-a207-f38b7d0d9e29',

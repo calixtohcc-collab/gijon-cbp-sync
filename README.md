@@ -15,11 +15,11 @@ Proceso automático que cada día:
 
 ## Configuración
 
-Variables del repositorio (Settings → Secrets and variables → Actions → Variables):
+Los identificadores (no son secretos) están en `src/sync.mjs` y pueden sobrescribirse con variables del repositorio:
 
 | Variable | Valor |
 | --- | --- |
-| `CLIENT_ID` | Id. de la aplicación registrada en Microsoft Entra |
+| `CLIENT_ID` | `17a79756-e595-41f7-a55e-2d616c4a9d6c` (aplicación *Gijon CBP Sync*) |
 | `TENANT_ID` | `92d41dc0-249a-4073-bd9e-d966005c3a94` |
 
 Ejecución manual: pestaña **Actions** → *Sincronizar FBPA* → *Run workflow*.
