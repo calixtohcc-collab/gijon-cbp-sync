@@ -93,7 +93,7 @@ export function leerPartidos(html) {
         const rival = local ? vis : loc;
         if (/DESCANSA/i.test(rival)) { continue; }
         const fm = fec.match(/(\d{2})\/(\d{2})\/(\d{4})\s*(\d{1,2}):(\d{2})?/) || fec.match(/(\d{2})\/(\d{2})\/(\d{4})/);
-        const fecha = fm ? { y: +fm[3], m: +fm[2], d: +fm[1], h: fm[4] ? +fm[4] : 12, mi: fm[5] ? +fm[5] : 0 } : null;
+        const fecha = fm ? { y: +fm[3], m: +fm[2], d: +fm[1], h: fm[4] ? +fm[4] : 12, mi: fm[5] ? +fm[5] : 0, sinHora: !fm[4] } : null;
         const pf = local ? pl : pv; const pa = local ? pv : pl;
         out.push({ equipo, competicion: comp, jornada: jor, local, rival, campo: /^-+$/.test(campo) ? '' : campo, fecha,
           pf: /^\d+$/.test(pf) ? +pf : null, pa: /^\d+$/.test(pa) ? +pa : null });

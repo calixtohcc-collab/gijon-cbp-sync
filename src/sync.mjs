@@ -96,6 +96,7 @@ async function main() {
     const clave = `${p.equipo}|${p.competicion}|J${p.jornada}`;
     const fecha = p.fecha ? madridUtc(p.fecha).toISOString() : null;
     let notas = `${COMP(p.competicion)} · Jornada ${p.jornada} · ${p.local ? 'Local' : 'Visitante'}`;
+    if (p.fecha && p.fecha.sinHora) { notas += ' · Hora por confirmar'; }
     if (p.pf !== null && p.pa !== null) { notas += ` · Resultado: ${p.pf}-${p.pa} (${p.pf > p.pa ? 'victoria' : 'derrota'})`; }
     notas += ' · Fuente: FBPA';
     const lugar = p.campo || (p.local ? 'Por confirmar (local)' : 'Por confirmar (pista del rival)');
