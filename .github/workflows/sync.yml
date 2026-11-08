@@ -1,0 +1,36 @@
+name: Sincronizar FBPA
+
+on:
+  schedule:
+    - cron: '30 22 * * *'   # cada noche (23:30 en Gijón en horario de invierno)
+    - cron: '0 15 * * 6,0'  # sábados y domingos por la tarde, para recoger resultados
+  workflow_dispatch: {}
+
+permissions:
+  id-token: write   # identidad federada con Microsoft, sin contraseñas
+  contents: write   # publicar los calendarios .ics
+
+concurrency:
+  group: sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Sincronizar calendario
+        env:
+          CLIENT_ID: ${{ vars.CLIENT_ID }}
+          TENANT_ID: ${{ vars.TENANT_ID }}
+        run: node src/sync.mjs
+      - name: Publicar calendarios
+        run: |
+          git config user.name "gijon-cbp-sync"
+          git config user.email "actions@users.noreply.github.com"
+          git add docs
+          git diff --cached --quiet || (git commit -m "Actualización FBPA $(date -u +%Y-%m-%dT%H:%MZ)" && git push)

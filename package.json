@@ -1,0 +1,9 @@
+{
+  "name": "gijon-cbp-sync",
+  "private": true,
+  "type": "module",
+  "description": "Sincroniza el calendario de la FBPA con el portal SharePoint de Gij\u00f3n CBP y publica calendarios .ics",
+  "scripts": {
+    "sync": "node src/sync.mjs"
+  }
+}

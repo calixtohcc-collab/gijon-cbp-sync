@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Calendarios Gijón CBP</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;600;700&display=swap">
+<style>
+:root{--negro:#090909;--ambar:#FF9F00;--gris:#5c5c5c;--fondo:#F6F5F1}
+*{box-sizing:border-box}
+body{margin:0;font-family:Inter,system-ui,sans-serif;background:var(--fondo);color:var(--negro)}
+header{background:var(--negro);color:#fff;padding:40px 16px 32px}
+.in{max-width:900px;margin:0 auto}
+h1{font-family:Anton,Impact,sans-serif;font-weight:400;text-transform:uppercase;font-size:clamp(36px,7vw,60px);line-height:1;margin:8px 0}
+h1 em{font-style:normal;color:var(--ambar)}
+.over{font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--ambar)}
+header p{color:#cfcfcf;max-width:620px}
+main{padding:28px 16px 48px}
+.pasos{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin-bottom:28px}
+.paso{background:#fff;border:1px solid #E6E3DC;border-radius:14px;padding:16px;font-size:14px}
+.paso b{display:block;margin-bottom:4px}
+ul{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px}
+li{background:#fff;border:1px solid #E6E3DC;border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:10px}
+li span{font-weight:700}
+.btns{display:flex;gap:8px;flex-wrap:wrap}
+a.btn{display:inline-flex;align-items:center;min-height:40px;padding:0 14px;border-radius:10px;text-decoration:none;font-weight:700;font-size:13px;border:1.5px solid var(--negro);color:var(--negro)}
+a.btn.pri{background:var(--negro);color:var(--ambar)}
+.nota{font-size:13px;color:var(--gris);margin-top:24px}
+</style>
+</head>
+<body>
+<header><div class="in"><div class="over">Gijón CBP · Pumatas Basketball</div><h1>Calendarios <em>en tu móvil</em></h1>
+<p>Suscríbete al calendario de tu equipo y tendrás todos los partidos en el teléfono. Se actualiza solo cada día con los datos de la Federación de Baloncesto del Principado de Asturias.</p></div></header>
+<main><div class="in">
+<div class="pasos">
+<div class="paso"><b>iPhone</b>Pulsa «Suscribirse» en tu equipo y confirma «Suscribirse».</div>
+<div class="paso"><b>Android / Google Calendar</b>Copia el enlace y en calendar.google.com elige «Otros calendarios» → «Desde URL».</div>
+<div class="paso"><b>Outlook</b>«Agregar calendario» → «Suscribirse desde la web» y pega el enlace.</div>
+</div>
+<ul id="lista"><li><span>Cargando equipos…</span></li></ul>
+<p class="nota">Solo se publican partidos, torneos e hitos del club, que ya son públicos en la FBPA. <span id="act"></span></p>
+</div></main>
+<script>
+(function(){
+  var base = location.href.replace(/[^/]*$/, '');
+  function item(nombre, archivo){
+    var url = base + archivo, webcal = url.replace(/^https?:/, 'webcal:');
+    return '<li><span>'+nombre+'</span><div class="btns"><a class="btn pri" href="'+webcal+'">Suscribirse</a><a class="btn" href="'+url+'" data-copiar="'+url+'">Copiar enlace</a></div></li>';
+  }
+  fetch('equipos.json').then(function(r){return r.json();}).then(function(eqs){
+    document.getElementById('lista').innerHTML = item('Todo el club','ics/todo-el-club.ics') + eqs.map(function(e){return item(e.equipo, e.archivo);}).join('');
+    document.querySelectorAll('[data-copiar]').forEach(function(a){ a.addEventListener('click', function(ev){ ev.preventDefault(); navigator.clipboard.writeText(a.getAttribute('data-copiar')).then(function(){ a.textContent='¡Copiado!'; setTimeout(function(){a.textContent='Copiar enlace';},1500); }); }); });
+  }).catch(function(){ document.getElementById('lista').innerHTML='<li><span>Los calendarios estarán disponibles tras la primera actualización.</span></li>'; });
+  fetch('ultima-actualizacion.txt').then(function(r){return r.text();}).then(function(t){ var d=new Date(t.split('\n')[0]); if(!isNaN(d)) document.getElementById('act').textContent='Última actualización: '+d.toLocaleString('es-ES'); });
+})();
+</script>
+</body>
+</html>
