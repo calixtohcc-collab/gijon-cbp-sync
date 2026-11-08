@@ -2,6 +2,7 @@
 // Permiso Sites.Selected (write) concedido sobre PortalCBP el 2026-11-08.
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { leerPartidos } from './fbpa.mjs';
+import { actualizarClubes } from './clubes.mjs';
 
 const CFG = {
   fbpa: 'https://www.fbpa.es/resultados-club-7954/cb-pumarin',
@@ -10,6 +11,7 @@ const CFG = {
   site: 'gijoncbp.sharepoint.com,fbb8e2b4-653c-490e-8463-9062314c2408,429a1159-19a6-4d88-bfb6-d7f6ed32f48c',
   listaCalendario: '86cc3ca3-467f-43ca-8b33-eb994839eb5f',
   listaAvisos: 'e451e830-802b-4d55-a207-f38b7d0d9e29',
+  listaClubes: '7e6a0d35-e7cd-4795-af26-86d3aa2fc432',
   seco: process.argv.includes('--seco')
 };
 
@@ -140,6 +142,12 @@ async function main() {
   writeFileSync('docs/equipos.json', JSON.stringify(equipos.map((e) => ({ equipo: e, archivo: `ics/${slug(e)}.ics` })), null, 2));
   writeFileSync('docs/ultima-actualizacion.txt', new Date().toISOString() + `\n${partidos.length} partidos FBPA · ${nuevos} nuevos · ${cambios} actualizados\n`);
   console.log(`ICS: ${equipos.length + 1} calendarios publicados`);
+
+  // Directorio de clubes: los lunes, al publicar cambios o si se fuerza
+  if (process.env.GITHUB_EVENT_NAME === 'push' || process.env.GITHUB_EVENT_NAME === 'workflow_dispatch' || new Date().getUTCDay() === 1) {
+    try { const r = await actualizarClubes(graph, CFG.site, CFG.listaClubes); console.log(`Clubes: ${r.total} en la FBPA · ${r.nuevos} nuevos · ${r.actualizados} actualizados`); }
+    catch (e) { console.log('Clubes: no se pudo actualizar (' + e.message + ')'); }
+  }
 }
 
 main().catch((e) => { console.error('ERROR:', e.message); process.exit(1); });
