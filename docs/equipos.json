@@ -1,0 +1,106 @@
+[
+  {
+    "equipo": "Alevín Femenino A",
+    "archivo": "ics/alevin-femenino-a.ics"
+  },
+  {
+    "equipo": "Alevín Femenino B",
+    "archivo": "ics/alevin-femenino-b.ics"
+  },
+  {
+    "equipo": "Alevín Masculino A",
+    "archivo": "ics/alevin-masculino-a.ics"
+  },
+  {
+    "equipo": "Alevín Masculino B",
+    "archivo": "ics/alevin-masculino-b.ics"
+  },
+  {
+    "equipo": "Alevín Masculino C",
+    "archivo": "ics/alevin-masculino-c.ics"
+  },
+  {
+    "equipo": "Benjamín Femenino",
+    "archivo": "ics/benjamin-femenino.ics"
+  },
+  {
+    "equipo": "Benjamín Masculino A",
+    "archivo": "ics/benjamin-masculino-a.ics"
+  },
+  {
+    "equipo": "Benjamín Masculino B",
+    "archivo": "ics/benjamin-masculino-b.ics"
+  },
+  {
+    "equipo": "Benjamín Masculino C",
+    "archivo": "ics/benjamin-masculino-c.ics"
+  },
+  {
+    "equipo": "Cadete Femenino A",
+    "archivo": "ics/cadete-femenino-a.ics"
+  },
+  {
+    "equipo": "Cadete Femenino B",
+    "archivo": "ics/cadete-femenino-b.ics"
+  },
+  {
+    "equipo": "Cadete Masculino A",
+    "archivo": "ics/cadete-masculino-a.ics"
+  },
+  {
+    "equipo": "Cadete Masculino B",
+    "archivo": "ics/cadete-masculino-b.ics"
+  },
+  {
+    "equipo": "Cadete Masculino C",
+    "archivo": "ics/cadete-masculino-c.ics"
+  },
+  {
+    "equipo": "Equipo de Madres",
+    "archivo": "ics/equipo-de-madres.ics"
+  },
+  {
+    "equipo": "Equipo de Padres",
+    "archivo": "ics/equipo-de-padres.ics"
+  },
+  {
+    "equipo": "Infantil Femenino A",
+    "archivo": "ics/infantil-femenino-a.ics"
+  },
+  {
+    "equipo": "Infantil Masculino A",
+    "archivo": "ics/infantil-masculino-a.ics"
+  },
+  {
+    "equipo": "Infantil Masculino B",
+    "archivo": "ics/infantil-masculino-b.ics"
+  },
+  {
+    "equipo": "Infantil Masculino C",
+    "archivo": "ics/infantil-masculino-c.ics"
+  },
+  {
+    "equipo": "Junior Femenino A",
+    "archivo": "ics/junior-femenino-a.ics"
+  },
+  {
+    "equipo": "Junior Masculino A",
+    "archivo": "ics/junior-masculino-a.ics"
+  },
+  {
+    "equipo": "Junior Masculino B",
+    "archivo": "ics/junior-masculino-b.ics"
+  },
+  {
+    "equipo": "Sénior Femenino A",
+    "archivo": "ics/senior-femenino-a.ics"
+  },
+  {
+    "equipo": "Sénior Femenino B",
+    "archivo": "ics/senior-femenino-b.ics"
+  },
+  {
+    "equipo": "Sénior Masculino A",
+    "archivo": "ics/senior-masculino-a.ics"
+  }
+]
