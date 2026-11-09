@@ -1,0 +1,20 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx/client-side-web-part-manifest.schema.json",
+  "id": "4a0847fd-98f3-45b1-8bf5-c81714e48a49",
+  "alias": "AvisosCbpWebPart",
+  "componentType": "WebPart",
+  "version": "*",
+  "manifestVersion": 2,
+  "requiresCustomScript": false,
+  "supportedHosts": ["SharePointWebPart", "SharePointFullPage"],
+  "supportsThemeVariants": false,
+  "supportsFullBleed": true,
+  "preconfiguredEntries": [{
+    "groupId": "5c03119e-3074-46fd-976b-c60198311f70",
+    "group": { "default": "Gijón CBP" },
+    "title": { "default": "Avisos Gijón CBP" },
+    "description": { "default": "Tablón de avisos con prioridad, fecha límite y edición rápida." },
+    "officeFabricIconFontName": "Megaphone",
+    "properties": { "titulo": "Avisos" }
+  }]
+}

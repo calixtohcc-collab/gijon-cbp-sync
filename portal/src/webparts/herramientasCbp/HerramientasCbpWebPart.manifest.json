@@ -1,0 +1,20 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx/client-side-web-part-manifest.schema.json",
+  "id": "8f1c3e5a-7b2d-4c6e-9a0f-1d2e3f4a5b05",
+  "alias": "HerramientasCbpWebPart",
+  "componentType": "WebPart",
+  "version": "*",
+  "manifestVersion": 2,
+  "requiresCustomScript": false,
+  "supportedHosts": ["SharePointWebPart", "SharePointFullPage"],
+  "supportsThemeVariants": false,
+  "supportsFullBleed": true,
+  "preconfiguredEntries": [{
+    "groupId": "5c03119e-3074-46fd-976b-c60198311f70",
+    "group": { "default": "Gijón CBP" },
+    "title": { "default": "Herramientas Gijón CBP" },
+    "description": { "default": "Convocatorias, asistencia, pizarra táctica, sesiones y plantillas." },
+    "officeFabricIconFontName": "Toolbox",
+    "properties": { "inicial": "convocatorias" }
+  }]
+}

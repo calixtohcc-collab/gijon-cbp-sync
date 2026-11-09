@@ -1,0 +1,33 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx/client-side-web-part-manifest.schema.json",
+  "id": "6f167631-90f1-4098-895c-2baceaac4420",
+  "alias": "ComisionesCbpWebPart",
+  "componentType": "WebPart",
+  "version": "*",
+  "manifestVersion": 2,
+  "requiresCustomScript": false,
+  "supportedHosts": [
+    "SharePointWebPart",
+    "SharePointFullPage"
+  ],
+  "supportsThemeVariants": false,
+  "supportsFullBleed": true,
+  "preconfiguredEntries": [
+    {
+      "groupId": "5c03119e-3074-46fd-976b-c60198311f70",
+      "group": {
+        "default": "Gijón CBP"
+      },
+      "title": {
+        "default": "Comisiones Gijón CBP"
+      },
+      "description": {
+        "default": "Espacios colaborativos de las comisiones de trabajo."
+      },
+      "officeFabricIconFontName": "Teamwork",
+      "properties": {
+        "titulo": "Comisiones de trabajo"
+      }
+    }
+  ]
+}

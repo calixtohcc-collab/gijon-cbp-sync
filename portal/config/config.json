@@ -1,0 +1,48 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx-build/config.2.0.schema.json",
+  "version": "2.0",
+  "bundles": {
+    "gijon-cbp-web-parts": {
+      "components": [
+        {
+          "entrypoint": "./lib/webparts/portadaCbp/PortadaCbpWebPart.js",
+          "manifest": "./src/webparts/portadaCbp/PortadaCbpWebPart.manifest.json"
+        },
+        {
+          "entrypoint": "./lib/webparts/calendarioCbp/CalendarioCbpWebPart.js",
+          "manifest": "./src/webparts/calendarioCbp/CalendarioCbpWebPart.manifest.json"
+        },
+        {
+          "entrypoint": "./lib/webparts/equiposCbp/EquiposCbpWebPart.js",
+          "manifest": "./src/webparts/equiposCbp/EquiposCbpWebPart.manifest.json"
+        },
+        {
+          "entrypoint": "./lib/webparts/materialesCbp/MaterialesCbpWebPart.js",
+          "manifest": "./src/webparts/materialesCbp/MaterialesCbpWebPart.manifest.json"
+        },
+        {
+          "entrypoint": "./lib/webparts/herramientasCbp/HerramientasCbpWebPart.js",
+          "manifest": "./src/webparts/herramientasCbp/HerramientasCbpWebPart.manifest.json"
+        },
+        {
+          "entrypoint": "./lib/webparts/avisosCbp/AvisosCbpWebPart.js",
+          "manifest": "./src/webparts/avisosCbp/AvisosCbpWebPart.manifest.json"
+        },
+        {
+          "entrypoint": "./lib/webparts/juntaCbp/JuntaCbpWebPart.js",
+          "manifest": "./src/webparts/juntaCbp/JuntaCbpWebPart.manifest.json"
+        },
+        {
+          "entrypoint": "./lib/webparts/comisionesCbp/ComisionesCbpWebPart.js",
+          "manifest": "./src/webparts/comisionesCbp/ComisionesCbpWebPart.manifest.json"
+        },
+        {
+          "entrypoint": "./lib/webparts/partidosCbp/PartidosCbpWebPart.js",
+          "manifest": "./src/webparts/partidosCbp/PartidosCbpWebPart.manifest.json"
+        }
+      ]
+    }
+  },
+  "externals": {},
+  "localizedResources": {}
+}
