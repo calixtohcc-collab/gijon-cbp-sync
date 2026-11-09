@@ -27,7 +27,10 @@ export function sugerirEquipo(j: IJug, inicioNueva: number, lista: string[]): st
   const resto = j.equipo.slice(cat.length).trim(); // «Masculino A», «Femenino»
   const rama = resto.split(' ')[0]; const letra = resto.split(' ')[1] || 'A';
   const candidatos = lista.filter((e: string) => e.indexOf(nueva + ' ' + rama) === 0);
-  return candidatos.filter((e: string) => e === nueva + ' ' + rama + ' ' + letra)[0] || candidatos.filter((e: string) => e === nueva + ' ' + rama)[0] || candidatos[0] || j.equipo;
+  if (!candidatos.length) { return j.equipo; }
+  // misma letra; si no existe, la letra más cercana por debajo (C → B), y si no, el último equipo de la rama
+  const conLetra = candidatos.filter((e: string) => (e.split(' ')[2] || 'A') <= letra).sort();
+  return conLetra.length ? conLetra[conLetra.length - 1] : candidatos.sort()[candidatos.length - 1];
 }
 
 /* ---------- Trayectoria ---------- */
