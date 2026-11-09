@@ -1,5 +1,5 @@
 import { esc, IEvento, DIAS_LARGO, MESES_LARGO, hora } from '../../common/cbp';
-import { spPost, spGet, listUrl, aviso } from '../../common/ui';
+import { spPost, spGet, listUrl, aviso, crearEnCarpeta } from '../../common/ui';
 import { ICtx, IJugador, plantilla, selectorEquipo, enlazarComunes, sinPlantilla, parse } from './datos';
 
 interface IConv { id: number; jugadores: number[]; citacion: string; notas: string; }
@@ -84,7 +84,7 @@ function pintar(el: HTMLElement, ctx: ICtx, p: IEvento, jug: IJugador[], conv: I
     const ids = jug.filter((j: IJugador) => sel[j.id]).map((j: IJugador) => j.id);
     const body = { Title: p.equipo + ' · ' + p.rival + ' · ' + p.fecha.getDate() + '/' + (p.fecha.getMonth() + 1), EquipoC: p.equipo, PartidoId: p.id, FechaPartido: p.fecha.toISOString(), RivalC: p.rival,
       Citacion: (el.querySelector('[data-cit]') as HTMLInputElement).value, NotasC: (el.querySelector('[data-notas]') as HTMLInputElement).value, JugadoresC: JSON.stringify(ids) };
-    const url = listUrl(ctx.w, 'Lists/Convocatorias') + '/items' + (conv.id ? '(' + conv.id + ')' : '');
-    spPost(ctx.client, url, body, !!conv.id).then(() => { aviso('Convocatoria guardada (' + ids.length + ' jugadores)'); rer(); }).catch((e: Error) => aviso('Error: ' + e.message, true));
+    const guardar = conv.id ? spPost(ctx.client, listUrl(ctx.w, 'Lists/Convocatorias') + '/items(' + conv.id + ')', body, true) : crearEnCarpeta(ctx.client, ctx.w, 'Lists/Convocatorias', p.equipo, body);
+    guardar.then(() => { aviso('Convocatoria guardada (' + ids.length + ' jugadores)'); rer(); }).catch((e: Error) => aviso('Error: ' + e.message, true));
   });
 }

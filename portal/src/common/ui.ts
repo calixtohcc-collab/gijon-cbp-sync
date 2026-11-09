@@ -204,3 +204,18 @@ const CSS2 = `
  .cbp-sem{min-width:720px}
 }
 `;
+
+/** Crea un elemento dentro de la carpeta de un equipo (asistencia y convocatorias tienen una carpeta por equipo con permisos de su cuerpo técnico).
+ *  Primero crea el elemento con el título en la carpeta y después rellena el resto de campos con tipos normales. */
+export function crearEnCarpeta(client: SPHttpClient, w: string, rel: string, carpeta: string, body: { [k: string]: any }): Promise<number> { // eslint-disable-line @typescript-eslint/no-explicit-any
+  const base = listUrl(w, rel);
+  return spPost(client, base + '/AddValidateUpdateItemUsingPath', {
+    listItemCreateInfo: { FolderPath: { DecodedUrl: webPath(w) + '/' + rel + '/' + carpeta }, UnderlyingObjectType: 0 },
+    formValues: [{ FieldName: 'Title', FieldValue: String(body.Title || carpeta) }], bNewDocumentUpdate: false
+  }).then((r: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
+    const v = (r && r.value) || []; const e = v.filter((x: any) => x.HasException)[0]; // eslint-disable-line @typescript-eslint/no-explicit-any
+    if (e) { throw new Error(/acceso|access|denied|permis/i.test(e.ErrorMessage || '') ? 'Solo el cuerpo técnico de ' + carpeta + ', coordinación y la junta pueden guardar aquí.' : e.ErrorMessage); }
+    const id = +v.filter((x: any) => x.FieldName === 'Id')[0].FieldValue; // eslint-disable-line @typescript-eslint/no-explicit-any
+    return spPost(client, base + '/items(' + id + ')', body, true).then(() => id);
+  }).catch((x: Error) => { if (/HTTP 403|HTTP 401/.test(x.message)) { throw new Error('Solo el cuerpo técnico de ' + carpeta + ', coordinación y la junta pueden guardar aquí.'); } throw x; });
+}

@@ -1,5 +1,5 @@
 import { esc } from '../../common/cbp';
-import { spPost, spGet, listUrl, aviso, fechaInput } from '../../common/ui';
+import { spPost, spGet, listUrl, aviso, fechaInput, crearEnCarpeta } from '../../common/ui';
 import { ICtx, IJugador, plantilla, selectorEquipo, enlazarComunes, sinPlantilla, parse } from './datos';
 
 interface ISesionA { id: number; fecha: string; p: number[]; a: number[]; j: number[]; }
@@ -70,7 +70,7 @@ function pintar(el: HTMLElement, ctx: ICtx, jug: IJugador[], sesiones: ISesionA[
   (el.querySelector('[data-guardar]') as HTMLElement).addEventListener('click', () => {
     const ids = (k: string): number[] => jug.filter((j: IJugador) => estado[j.id] === k).map((j: IJugador) => j.id);
     const body = { Title: ctx.equipo + ' · ' + fechaSel, EquipoA: ctx.equipo, FechaA: fechaSel + 'T12:00:00Z', Presentes: JSON.stringify(ids('p')), Ausentes: JSON.stringify(ids('a')), Justificadas: JSON.stringify(ids('j')) };
-    const url = listUrl(ctx.w, 'Lists/Asistencia') + '/items' + (hoy ? '(' + hoy.id + ')' : '');
-    spPost(ctx.client, url, body, !!hoy).then(() => { aviso('Asistencia guardada: ' + ids('p').length + ' presentes'); rer(); }).catch((e: Error) => aviso('Error: ' + e.message, true));
+    const guardar = hoy ? spPost(ctx.client, listUrl(ctx.w, 'Lists/Asistencia') + '/items(' + hoy.id + ')', body, true) : crearEnCarpeta(ctx.client, ctx.w, 'Lists/Asistencia', ctx.equipo, body);
+    guardar.then(() => { aviso('Asistencia guardada: ' + ids('p').length + ' presentes'); rer(); }).catch((e: Error) => aviso('Error: ' + e.message, true));
   });
 }
