@@ -1,6 +1,7 @@
 import { SPHttpClient } from '@microsoft/sp-http';
 import { esc } from './cbp';
 import { spPost, spGet, listUrl, abrirModal, cerrarModal, aviso, fechaInput } from './ui';
+import { cargarTrayectoria, htmlTrayectoria, CSS_TRAY, ITramo } from './temporada';
 
 /* Jugadores: datos mínimos, contacto para menores y vínculos con otros equipos */
 export const EQUIPOS_LISTA: string[] = ['Sénior Femenino A', 'Sénior Femenino B', 'Sénior Masculino A', 'Junior Femenino A', 'Junior Masculino A', 'Junior Masculino B',
@@ -64,6 +65,7 @@ export function fichaJugador(client: SPHttpClient, w: string, j: IJug | undefine
     '<label class="cbp-field full" data-propio="1">Teléfono propio <span style="font-weight:400;color:#5c5c5c">(a partir de 16 años)</span><input name="tel" type="tel" value="' + esc(j ? j.tel : '') + '" inputmode="tel"></label>' +
     '<fieldset class="full cbp-fs"><legend>Juega también con · habitual</legend><p class="cbp-nota" style="margin:0 0 6px">Equipos con los que juega casi siempre. Cuentan como conflicto si los partidos se pisan.</p>' + marcas('hab', j ? j.habitual : [], eq) + '</fieldset>' +
     '<fieldset class="full cbp-fs"><legend>Convocatoria ocasional</legend><p class="cbp-nota" style="margin:0 0 6px">Equipos que le llaman a veces. Salen como aviso.</p>' + marcas('oca', j ? j.ocasional : [], eq) + '</fieldset>' +
+    (j ? '<fieldset class="full cbp-fs"><legend>Trayectoria en el club</legend><div data-tray="1"><div class="cbp-cargando">Cargando…</div></div></fieldset>' : '') +
     '<div class="cbp-btns full">' + (j ? '<button type="button" class="cbp-btn" data-baja="1" style="margin-right:auto;color:#B00020;border-color:#B00020">Dar de baja</button>' : '') +
     '<button type="button" class="cbp-btn" data-c="1">Cancelar</button><button type="submit" class="cbp-btn pri">' + (j ? 'Guardar' : 'Dar de alta') + '</button></div></form>';
   const b = abrirModal(j ? j.nombre : 'Nuevo jugador', html, 660);
@@ -79,6 +81,11 @@ export function fichaJugador(client: SPHttpClient, w: string, j: IJug | undefine
     (f.querySelector('[data-edad]') as HTMLElement).textContent = e === undefined ? 'Indica la fecha de nacimiento para saber qué datos de contacto hacen falta.' : e + ' años · ' + (e < 16 ? 'menor: solo contacto adulto.' : e < 18 ? 'menor: contacto adulto obligatorio y puede tener teléfono propio.' : 'mayor de edad: teléfono propio.');
   };
   (f.querySelector('[name="nac"]') as HTMLInputElement).addEventListener('change', ajustar); ajustar();
+  const tray = f.querySelector('[data-tray]') as HTMLElement;
+  if (tray && j) {
+    cargarTrayectoria(client, w, j.id).then((t: ITramo[]) => { tray.innerHTML = htmlTrayectoria(j, t); })
+      .catch(() => { tray.innerHTML = htmlTrayectoria(j, []); });
+  }
   (f.querySelector('[data-c]') as HTMLElement).addEventListener('click', cerrarModal);
   const url = listUrl(w, 'Lists/Jugadores') + '/items';
   const baja = f.querySelector('[data-baja]') as HTMLElement;
@@ -120,5 +127,5 @@ export const CSS_JUG = `
 `;
 export function cargarEstilosJug(): void {
   if (document.getElementById('cbp-cssj')) { return; }
-  const s = document.createElement('style'); s.id = 'cbp-cssj'; s.textContent = CSS_JUG; document.head.appendChild(s);
+  const s = document.createElement('style'); s.id = 'cbp-cssj'; s.textContent = CSS_JUG + CSS_TRAY; document.head.appendChild(s);
 }

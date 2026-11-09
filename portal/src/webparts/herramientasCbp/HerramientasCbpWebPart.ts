@@ -9,6 +9,9 @@ import { renderAsistencia } from './asistencia';
 import { renderPizarra } from './pizarra';
 import { renderSesiones } from './sesiones';
 import { renderPlantillas } from './plantillas';
+import { renderTemporada } from './temporadaTab';
+import { esCoordinacion } from '../../common/temporada';
+import { cargarEstilosJug } from '../../common/jugadores';
 
 export interface IHerramientasCbpWebPartProps { inicial: string; }
 
@@ -17,7 +20,8 @@ const TABS: { k: string; t: string; ico: string; d: string }[] = [
   { k: 'asistencia', t: 'Asistencia', ico: 'calendario', d: 'Pasa lista en cada entrenamiento y consulta los porcentajes.' },
   { k: 'pizarra', t: 'Pizarra táctica', ico: 'herramientas', d: 'Dibuja jugadas y ejercicios y guárdalos en Materiales.' },
   { k: 'sesiones', t: 'Sesiones', ico: 'materiales', d: 'Planifica entrenamientos por bloques con ejercicios de la biblioteca.' },
-  { k: 'plantillas', t: 'Plantillas', ico: 'junta', d: 'Jugadores y jugadoras de cada equipo.' }
+  { k: 'plantillas', t: 'Plantillas', ico: 'junta', d: 'Jugadores y jugadoras de cada equipo.' },
+  { k: 'temporada', t: 'Cambio de temporada', ico: 'temporada', d: 'Cierra la temporada en la trayectoria de cada jugador y prepara la siguiente. Solo coordinación y junta.' }
 ];
 
 export default class HerramientasCbpWebPart extends BaseClientSideWebPart<IHerramientasCbpWebPartProps> {
@@ -26,6 +30,7 @@ export default class HerramientasCbpWebPart extends BaseClientSideWebPart<IHerra
   private jugadores: IJugador[] = [];
   private equipo: string = '';
   private cargado: boolean = false;
+  private coord: boolean = false;
 
   protected onInit(): Promise<void> {
     cargarEstilos(); cargarEstilosUi();
@@ -35,8 +40,9 @@ export default class HerramientasCbpWebPart extends BaseClientSideWebPart<IHerra
     if (m && TABS.some((t: { k: string }) => t.k === m[1])) { this.tab = m[1]; if (m[1] === 'convocatorias' && m[2]) { preseleccionarPartido(+m[2]); } }
     try { this.equipo = window.localStorage.getItem('cbp-equipo') || ''; } catch (e) { this.equipo = ''; }
     const c = this.context.spHttpClient; const w = this.context.pageContext.web.absoluteUrl;
-    return Promise.all([cargarEventos(c, w).catch(() => []), cargarJugadores(c, w).catch(() => [])])
-      .then((r: [IEvento[], IJugador[]]) => { this.eventos = r[0]; this.jugadores = r[1]; this.cargado = true; });
+    cargarEstilosJug();
+    return Promise.all([cargarEventos(c, w).catch(() => []), cargarJugadores(c, w).catch(() => []), esCoordinacion(c, w)])
+      .then((r: [IEvento[], IJugador[], boolean]) => { this.eventos = r[0]; this.jugadores = r[1]; this.coord = r[2]; this.cargado = true; if (this.tab === 'temporada' && !this.coord) { this.tab = 'convocatorias'; } });
   }
 
   private ctx(): ICtx {
@@ -50,10 +56,11 @@ export default class HerramientasCbpWebPart extends BaseClientSideWebPart<IHerra
 
   public render(): void {
     if (!this.cargado) { this.domElement.innerHTML = '<div class="cbp"><div class="cbp-cargando">Cargando herramientas…</div></div>'; return; }
-    const t = TABS.filter((x: { k: string }) => x.k === this.tab)[0] || TABS[0];
+    const vis = TABS.filter((x: { k: string }) => x.k !== 'temporada' || this.coord);
+    const t = vis.filter((x: { k: string }) => x.k === this.tab)[0] || vis[0];
     this.domElement.innerHTML = '<div class="cbp"><div class="cbp-wrap" style="padding-top:24px;gap:18px">' +
       '<div class="cbp-sec-head"><h2 class="cbp-h2">Herramientas</h2></div>' +
-      '<div class="cbp-tooltabs" role="tablist" aria-label="Herramientas">' + TABS.map((x: { k: string; t: string; ico: string }) =>
+      '<div class="cbp-tooltabs" role="tablist" aria-label="Herramientas">' + vis.map((x: { k: string; t: string; ico: string }) =>
         '<button type="button" role="tab" class="cbp-tooltab" data-tab="' + x.k + '" aria-selected="' + (x.k === t.k ? 'true' : 'false') + '">' + icon(x.ico, 18) + x.t + '</button>').join('') + '</div>' +
       '<p style="margin:0;color:#5c5c5c">' + t.d + '</p>' +
       '<section class="cbp-card cbp-panel" role="tabpanel" data-panel="1"></section></div></div>';
@@ -71,6 +78,7 @@ export default class HerramientasCbpWebPart extends BaseClientSideWebPart<IHerra
     else if (t.k === 'asistencia') { renderAsistencia(panel, ctx); }
     else if (t.k === 'pizarra') { renderPizarra(panel, ctx); }
     else if (t.k === 'sesiones') { renderSesiones(panel, ctx); }
+    else if (t.k === 'temporada') { renderTemporada(panel, ctx); }
     else { renderPlantillas(panel, ctx); }
   }
 
