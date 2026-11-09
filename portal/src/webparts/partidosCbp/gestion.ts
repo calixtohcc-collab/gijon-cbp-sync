@@ -3,27 +3,27 @@ import { esc, MESES } from '../../common/cbp';
 import { spPost, abrirModal, cerrarModal, aviso, descargar, fechaInput } from '../../common/ui';
 import { porTitulo, getJ, formModal } from '../../common/sp2';
 import { libroXlsx } from '../../common/xlsx';
-import { IPartido, IRegla, IPista, IAlerta, IJugV, IHueco, sugerir, asignarPistas, analizar, norm, minDia, hm, DIA_TXT } from './motor';
+import { IPartido, IRegla, IPista, IAlerta, IJugV, IHueco, IPlazo, sugerir, asignarPistas, analizar, norm, minDia, hm, DIA_TXT, enPlazo, limitePlazo } from './motor';
 
 export const ESTADOS = ['Oficial', 'Propuesto', 'Validado', 'Pedido al rival', 'Aceptado', 'Contrapropuesta', 'Rechazado', 'Cargado en FBPA'];
 const L_GES = 'Partidos · Gestión'; const L_CLU = 'Partidos · Clubes';
 
 export interface IPartidoG extends IPartido { oficial: Date; comp: string; jornada: string; catPDM: string; }
-export interface IGest { id: number; pid: number; fechaProp?: Date; pista: string; estado: string; motivo: string; respuesta: string; ok: string; historial: string; }
+export interface IGest { id: number; pid: number; fechaProp?: Date; pista: string; estado: string; motivo: string; respuesta: string; ok: string; historial: string; fijo: boolean; petHora?: Date; petNota: string; petDe: string; }
 export interface IClub { id: number; nombre: string; corto: string; email: string; tel: string; contacto: string; url: string; direccion: string; equipos: string[]; manual: string[]; manualTxt: string; }
 export interface IEqInfo { pref: string[]; alt: string[]; }
 
 export interface IGCtx {
-  c: SPHttpClient; w: string; usuario: string; esCoord: boolean; margen: number;
+  c: SPHttpClient; w: string; usuario: string; esCoord: boolean; margen: number; plazo: IPlazo;
   semana: IPartidoG[]; gest: { [pid: number]: IGest }; clubes: IClub[]; pistas: IPista[]; reglas: IRegla[]; jugs: IJugV[];
   eqInfo: (p: IPartido) => IEqInfo; recargar: () => void;
 }
 
 /* ---------- Carga ---------- */
 export function cargarGestion(c: SPHttpClient, w: string): Promise<{ [pid: number]: IGest }> {
-  return getJ(c, porTitulo(w, L_GES) + '/items?$select=Id,PartidoId,FechaPropuesta,Pista,EstadoG,Motivo,Respuesta,OKEntrenador,Historial&$top=3000').then((j: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
+  return getJ(c, porTitulo(w, L_GES) + '/items?$select=Id,PartidoId,FechaPropuesta,Pista,EstadoG,Motivo,Respuesta,OKEntrenador,Historial,Fijo,PeticionHora,PeticionNota,PeticionDe&$top=3000').then((j: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
     const m: { [pid: number]: IGest } = {};
-    (j.value || []).forEach((i: any) => { m[i.PartidoId] = { id: i.Id, pid: i.PartidoId, fechaProp: i.FechaPropuesta ? new Date(i.FechaPropuesta) : undefined, pista: i.Pista || '', estado: i.EstadoG || 'Oficial', motivo: i.Motivo || '', respuesta: i.Respuesta || '', ok: i.OKEntrenador || '', historial: i.Historial || '' }; }); // eslint-disable-line @typescript-eslint/no-explicit-any
+    (j.value || []).forEach((i: any) => { m[i.PartidoId] = { id: i.Id, pid: i.PartidoId, fechaProp: i.FechaPropuesta ? new Date(i.FechaPropuesta) : undefined, pista: i.Pista || '', estado: i.EstadoG || 'Oficial', motivo: i.Motivo || '', respuesta: i.Respuesta || '', ok: i.OKEntrenador || '', historial: i.Historial || '', fijo: !!i.Fijo, petHora: i.PeticionHora ? new Date(i.PeticionHora) : undefined, petNota: i.PeticionNota || '', petDe: i.PeticionDe || '' }; }); // eslint-disable-line @typescript-eslint/no-explicit-any
     return m;
   }).catch(() => ({}));
 }
@@ -63,6 +63,17 @@ export function guardarGest(ctx: IGCtx, p: IPartidoG, cambios: { [k: string]: an
   return spPost(ctx.c, porTitulo(ctx.w, L_GES) + '/items', { Title: p.equipo + ' vs ' + p.rival, PartidoId: p.id, Equipo: p.equipo, Rival: p.rival, Local: p.local, FechaOficial: p.oficial.toISOString(), EstadoG: 'Oficial', ...body }).then(() => undefined);
 }
 
+/** Partidos que el motor no debe mover: candado de coordinación o cambio ya en trámite con el rival o la FBPA */
+export const EN_TRAMITE = ['Validado', 'Pedido al rival', 'Aceptado', 'Contrapropuesta', 'Cargado en FBPA'];
+export function esFijo(g?: IGest): boolean { return !!g && (g.fijo || EN_TRAMITE.indexOf(g.estado) >= 0); }
+function fCorta(d: Date): string { return DIA_TXT[d.getDay()].slice(0, 3) + ' ' + d.getDate() + ', ' + hm(minDia(d)); }
+export function plazoTxt(ctx: IGCtx, p: IPartidoG): string {
+  if (!p.local) { return ''; }
+  const lim = limitePlazo({ ...p, fecha: p.oficial }, ctx.plazo);
+  return enPlazo({ ...p, fecha: p.oficial }, ctx.plazo) ? '<span class="cbp-plazo ok" title="Dentro del plazo ordinario: el local fija la hora sin conformidad del rival">En plazo · hasta ' + fCorta(lim) + '</span>'
+    : '<span class="cbp-plazo" title="Pasado el plazo ordinario: el cambio necesita la conformidad del rival">Fuera de plazo</span>';
+}
+
 /* ---------- Tabla de partidos de la semana ---------- */
 export function vPartidos(ctx: IGCtx, al: IAlerta[]): string {
   const ps = ctx.semana.slice().sort((a: IPartidoG, b: IPartidoG) => a.fecha.getTime() - b.fecha.getTime());
@@ -76,24 +87,32 @@ export function vPartidos(ctx: IGCtx, al: IAlerta[]): string {
       : esc(g && g.pista ? (ctx.pistas.filter((k: IPista) => k.clave === g.pista)[0] || { modulo: g.pista }).modulo : (mods[0] ? mods[0].modulo : ''))) : '';
     const acc: string[] = [];
     const b = (a: string, t: string, pri?: boolean): string => '<button type="button" class="cbp-btn sm' + (pri ? ' pri' : '') + '" data-ac="' + a + '|' + p.id + '"' + (pri ? ' style="color:#FF9F00"' : '') + '>' + t + '</button>';
-    if (est === 'Oficial' || est === 'Rechazado') { acc.push(b('proponer', 'Proponer cambio', grav[p.id] === 'critica')); }
-    if (est === 'Propuesto') { if (ctx.esCoord) { acc.push(b('validar', 'Validar', true)); } if (!g || !g.ok) { acc.push(b('ok', 'OK entrenador')); } acc.push(b('proponer', 'Editar')); if (ctx.esCoord) { acc.push(b('descartar', 'Descartar')); } }
-    if (est === 'Validado' && ctx.esCoord) { acc.push(b('mensaje', p.local ? 'Comunicar al rival' : 'Pedir al rival', true)); acc.push(b('cargado', 'Cargado en FBPA')); }
+    const plazoOk = p.local && enPlazo({ ...p, fecha: p.oficial }, ctx.plazo);
+    if (est === 'Oficial' || est === 'Rechazado') { acc.push(b('proponer', 'Proponer cambio', grav[p.id] === 'critica')); acc.push(b('peticion', g && g.petHora ? 'Cambiar petición' : 'Pedir otra hora')); }
+    if (est === 'Propuesto') { if (!g || !g.ok) { acc.push(b('ok', 'Dar OK', !ctx.esCoord)); } if (ctx.esCoord) { acc.push(b('validar', 'Validar', true)); } acc.push(b('proponer', 'Editar')); if (ctx.esCoord) { acc.push(b('descartar', 'Descartar')); } }
+    if (est === 'Validado' && ctx.esCoord) {
+      if (plazoOk) { acc.push(b('cargado', 'Cargado en FBPA', true)); acc.push(b('mensaje', 'Avisar al rival')); }
+      else { acc.push(b('mensaje', p.local ? 'Pedir conformidad al rival' : 'Pedir al rival', true)); acc.push(b('cargado', 'Cargado en FBPA')); }
+    }
     if (est === 'Pedido al rival' && ctx.esCoord) { acc.push(b('respuesta', 'Respuesta del rival', true)); acc.push(b('mensaje', 'Reenviar')); }
     if (est === 'Contrapropuesta' && ctx.esCoord) { acc.push(b('aceptarcp', 'Aceptar su hora', true)); acc.push(b('proponer', 'Proponer otra')); }
     if (est === 'Aceptado' && ctx.esCoord) { acc.push(b('cargado', 'Cargado en FBPA', true)); }
     if (est !== 'Oficial') { acc.push(b('historial', 'Historial')); }
+    const candado = ctx.esCoord ? '<button type="button" class="cbp-lock' + (g && g.fijo ? ' on' : '') + '" data-ac="fijar|' + p.id + '" title="' + (g && g.fijo ? 'Inamovible: el motor no lo mueve. Pulsa para soltarlo' : 'Marcar como inamovible') + '" aria-pressed="' + !!(g && g.fijo) + '">' + (g && g.fijo ? '🔒' : '🔓') + '</button>' : (g && g.fijo ? '<span title="Inamovible">🔒</span>' : '');
     return '<tr' + (grav[p.id] === 'critica' ? ' style="background:#FFF6F6"' : '') + '><td><b>' + esc(DIA_TXT[p.fecha.getDay()].slice(0, 3)) + ' ' + hm(minDia(p.fecha)) + '</b>' + (cambiado ? '<br><small style="text-decoration:line-through;color:#5c5c5c">' + hm(minDia(p.oficial)) + (p.oficial.toDateString() !== p.fecha.toDateString() ? ' ' + DIA_TXT[p.oficial.getDay()].slice(0, 3) : '') + ' FBPA</small>' : '') + '</td>' +
-      '<td><b>' + esc(p.equipo) + '</b><br><small style="color:#5c5c5c">' + (p.local ? 'vs ' : 'en ') + esc(p.rival) + '</small></td>' +
+      '<td><div style="display:flex;gap:6px;align-items:flex-start">' + candado + '<div><b>' + esc(p.equipo) + '</b><br><small style="color:#5c5c5c">' + (p.local ? 'vs ' : 'en ') + esc(p.rival) + '</small>' +
+      (p.local ? '<br>' + plazoTxt(ctx, p) : '') + (g && g.petHora && (est === 'Oficial' || est === 'Rechazado') ? '<br><small class="cbp-pet">Petición: ' + esc(fCorta(g.petHora)) + (g.petDe ? ' · ' + esc(g.petDe) : '') + '</small>' : '') + '</div></div></td>' +
       '<td>' + (p.local ? esc(p.lugar) : '<small>Fuera · ' + esc(p.lugar) + '</small>') + '</td><td>' + pista + '</td>' +
-      '<td>' + pillEstado(est) + (g && g.ok ? '<br><small style="color:#1B5E20">✓ ' + esc(g.ok) + '</small>' : '') + (est === 'Contrapropuesta' && g ? '<br><small>' + esc(g.respuesta) + '</small>' : '') +
+      '<td>' + pillEstado(est) + (est === 'Propuesto' ? '<br><small style="color:' + (g && g.ok ? '#1B5E20' : '#B36F00') + '">' + (g && g.ok ? '✓ OK de ' + esc(g.ok) : 'Falta el OK del entrenador') + '</small>' : g && g.ok ? '<br><small style="color:#1B5E20">✓ ' + esc(g.ok) + '</small>' : '') + (est === 'Contrapropuesta' && g ? '<br><small>' + esc(g.respuesta) + '</small>' : '') +
       (est === 'Cargado en FBPA' && !enFbpa ? '<br><small style="color:#B36F00">La FBPA aún no lo refleja</small>' : '') + '</td>' +
       '<td><div style="display:flex;gap:6px;flex-wrap:wrap">' + acc.join('') + '</div></td></tr>';
   };
   const herramientas = '<div class="cbp-box-h" style="flex-wrap:wrap;gap:8px"><h3 class="cbp-h2" style="font-size:24px;margin:0">Partidos de la semana</h3><div style="display:flex;gap:8px;flex-wrap:wrap">' +
-    (ctx.esCoord ? '<button type="button" class="cbp-btn sm pri" data-g="semana" style="color:#FF9F00">Proponer semana sin conflictos</button><button type="button" class="cbp-btn sm" data-g="pistas">Asignar pistas</button>' : '') +
+    (ctx.esCoord && ps.some((p: IPartidoG) => ctx.gest[p.id] && ctx.gest[p.id].estado === 'Propuesto') ? '<button type="button" class="cbp-btn sm pri" data-g="validartodo" style="color:#FF9F00">Validar propuestas (' + ps.filter((p: IPartidoG) => ctx.gest[p.id] && ctx.gest[p.id].estado === 'Propuesto').length + ')</button>' : '') +
+    (ctx.esCoord ? '<button type="button" class="cbp-btn sm" data-g="pistas">Asignar pistas</button>' : '') +
     '<button type="button" class="cbp-btn sm" data-g="fbpa">Para cargar en la FBPA</button><button type="button" class="cbp-btn sm" data-g="excel">Excel Patronato</button></div></div>';
-  return herramientas + (ctx.esCoord ? '' : '<p class="cbp-nota" style="margin:0">Puedes proponer cambios y dar el OK como entrenador. Validar, pedir cambios a otros clubes y cargar en la FBPA lo hace el grupo «Coordinación deportiva».</p>') +
+  return herramientas + '<p class="cbp-nota" style="margin:0">' + (ctx.esCoord ? 'Flujo: propuesta → OK del entrenador → validación → cargar en la FBPA. Los partidos en casa dentro de plazo no necesitan conformidad del rival. El candado marca partidos que el motor no puede mover.'
+    : 'Como entrenador puedes pedir otra hora para tus partidos en cualquier momento y dar el OK a las propuestas de coordinación. Validar, pedir cambios a otros clubes y cargar en la FBPA lo hace coordinación deportiva.') + '</p>' +
     '<section class="cbp-box" style="padding:8px 12px"><div class="cbp-scroll"><table class="cbp-tabla pt"><thead><tr><th>Hora</th><th>Partido</th><th>Instalación</th><th>Pista</th><th>Estado</th><th></th></tr></thead><tbody>' + ps.map(fila).join('') + '</tbody></table></div></section>';
 }
 
@@ -107,6 +126,8 @@ export function enlazarGestion(root: HTMLElement, ctx: IGCtx, al: IAlerta[]): vo
     const err = (x: Error): void => aviso('Error: ' + x.message, true);
     if (a === 'proponer') { modalPropuesta(ctx, p, al); }
     else if (a === 'validar') { guardarGest(ctx, p, { EstadoG: 'Validado' }, 'Validado').then(fin('Propuesta validada')).catch(err); }
+    else if (a === 'fijar') { guardarGest(ctx, p, { Fijo: !(g && g.fijo) }, g && g.fijo ? 'Ya no es inamovible' : 'Marcado como inamovible').then(fin(g && g.fijo ? 'Partido liberado' : 'Partido inamovible')).catch(err); }
+    else if (a === 'peticion') { modalPeticion(ctx, p); }
     else if (a === 'ok') { guardarGest(ctx, p, { OKEntrenador: nombreCorto(ctx.usuario) }, 'OK del entrenador').then(fin('OK registrado')).catch(err); }
     else if (a === 'descartar') { guardarGest(ctx, p, { EstadoG: 'Oficial', FechaPropuesta: null }, 'Propuesta descartada').then(fin('Propuesta descartada')).catch(err); }
     else if (a === 'mensaje') { modalMensaje(ctx, p); }
@@ -122,6 +143,12 @@ export function enlazarGestion(root: HTMLElement, ctx: IGCtx, al: IAlerta[]): vo
   root.querySelectorAll('[data-g]').forEach((b: Element) => b.addEventListener('click', () => {
     const k = b.getAttribute('data-g');
     if (k === 'excel') { excelPatronato(ctx); } else if (k === 'fbpa') { listaFbpa(ctx); } else if (k === 'pistas') { autoPistas(ctx); } else if (k === 'semana') { proponerSemana(ctx, al); }
+    else if (k === 'validartodo') {
+      const ps = ctx.semana.filter((p: IPartidoG) => ctx.gest[p.id] && ctx.gest[p.id].estado === 'Propuesto');
+      const sinOk = ps.filter((p: IPartidoG) => !ctx.gest[p.id].ok).length;
+      if (!window.confirm('Validar ' + ps.length + ' propuesta' + (ps.length === 1 ? '' : 's') + (sinOk ? ' (' + sinOk + ' sin OK del entrenador)' : '') + '?')) { return; }
+      ps.reduce((pr: Promise<void>, p: IPartidoG) => pr.then(() => guardarGest(ctx, p, { EstadoG: 'Validado' }, 'Validado')), Promise.resolve()).then(() => { aviso(ps.length + ' propuestas validadas'); ctx.recargar(); }).catch((x: Error) => aviso('Error: ' + x.message, true));
+    }
   }));
   root.querySelectorAll('[data-sol]').forEach((b: Element) => b.addEventListener('click', (ev: Event) => {
     ev.stopPropagation(); const p = pid(b.getAttribute('data-sol') || ''); if (p) { modalPropuesta(ctx, p, al); }
@@ -129,7 +156,7 @@ export function enlazarGestion(root: HTMLElement, ctx: IGCtx, al: IAlerta[]): vo
 }
 
 /** Justificación por defecto a partir de la alerta */
-function justificacion(p: IPartidoG, al: IAlerta[]): string {
+export function justificacion(p: IPartidoG, al: IAlerta[]): string {
   const a = al.filter((x: IAlerta) => x.partidos.indexOf(p.id) >= 0 && x.grav === 'critica')[0] || al.filter((x: IAlerta) => x.partidos.indexOf(p.id) >= 0)[0];
   if (!a) { return ''; }
   if (/Entrenador/.test(a.titulo)) { return 'Ese día el mismo entrenador dirige otro partido de nuestro club y no llega a tiempo.'; }
@@ -177,12 +204,30 @@ function modalPropuesta(ctx: IGCtx, p: IPartidoG, al: IAlerta[]): void {
   });
 }
 
+/* ---------- Petición de hora del entrenador ---------- */
+function modalPeticion(ctx: IGCtx, p: IPartidoG): void {
+  const g = ctx.gest[p.id]; const f = g && g.petHora ? g.petHora : p.fecha;
+  formModal('Pedir otra hora · ' + p.equipo, [
+    { n: 'dia', label: 'Día', tipo: 'date', valor: fechaInput(f), req: true }, { n: 'hora', label: 'Hora', tipo: 'text', valor: hm(minDia(f)), ph: '12:00', req: true },
+    { n: 'nota', label: 'Motivo', tipo: 'area', valor: g ? g.petNota : '', ph: 'Ej.: el entrenador trabaja hasta las 13:00 ese sábado' }
+  ], 'Guardar petición', (v: { [k: string]: any }) => { // eslint-disable-line @typescript-eslint/no-explicit-any
+    const h = /^\d{1,2}:\d{2}$/.test(v.hora) ? ('0' + v.hora).slice(-5) : '';
+    if (!h) { return Promise.reject(new Error('Hora no válida (usa 12:00)')); }
+    const fecha = new Date(v.dia + 'T' + h + ':00');
+    return guardarGest(ctx, p, { PeticionHora: fecha.toISOString(), PeticionNota: v.nota, PeticionDe: nombreCorto(ctx.usuario) }, 'Petición del entrenador: ' + fTxt(fecha)).then(() => { aviso('Petición guardada: coordinación la tendrá en cuenta al resolver la semana'); ctx.recargar(); });
+  }, 520, g && g.petHora ? '<button type="button" class="cbp-btn full" data-del-pet="1" style="justify-self:start">Retirar petición</button>' : '');
+  const del = document.querySelector('[data-del-pet]') as HTMLElement;
+  if (del) { del.addEventListener('click', () => { guardarGest(ctx, p, { PeticionHora: null, PeticionNota: '', PeticionDe: '' }, 'Petición retirada').then(() => { cerrarModal(); aviso('Petición retirada'); ctx.recargar(); }); }); }
+}
+
 /* ---------- Mensaje al club rival ---------- */
 function textoMensaje(ctx: IGCtx, p: IPartidoG, club?: IClub): string {
   const g = ctx.gest[p.id]; const nueva = g && g.fechaProp ? g.fechaProp : p.fecha;
   const saludo = 'Hola' + (club && club.contacto ? ' ' + club.contacto.split(' ')[0] : '') + ', os escribimos desde la coordinación deportiva del Gijón CBP (C.B. Pumarín).';
   const partido = 'Partido ' + (p.catPDM || p.equipo) + (p.jornada ? ', jornada ' + p.jornada : '') + ': ' + (p.local ? 'Gijón CBP – ' + p.rival : p.rival + ' – Gijón CBP') + ', fijado el ' + fTxt(p.oficial) + (p.local ? '' : ' en ' + p.lugar) + '.';
-  const pide = p.local
+  const plazoOk = p.local && enPlazo({ ...p, fecha: p.oficial }, ctx.plazo);
+  const pide = plazoOk ? 'Os informamos de que, dentro del plazo ordinario, lo hemos fijado el ' + fTxt(nueva) + ' en ' + (g && g.pista ? (ctx.pistas.filter((k: IPista) => k.clave === g.pista)[0] || { inst: p.lugar } as IPista).inst : p.lugar) + '. Lo cargamos en la intranet de la FBPA.'
+    : p.local
     ? 'Os proponemos jugarlo el ' + fTxt(nueva) + ' en ' + (g && g.pista ? (ctx.pistas.filter((k: IPista) => k.clave === g.pista)[0] || { inst: p.lugar } as IPista).inst : p.lugar) + '. ¿Nos dais vuestra conformidad para cargarlo en la intranet de la FBPA?'
     : 'Os pedimos, si es posible, pasarlo al ' + fTxt(nueva) + '. Si os encaja, ¿podéis cambiarlo en la intranet de la FBPA?';
   return saludo + '\n\n' + partido + '\n' + pide + (g && g.motivo ? '\nMotivo: ' + g.motivo : '') + '\n\nMuchas gracias y un saludo,\nCoordinación deportiva · Gijón CBP';
@@ -200,9 +245,9 @@ function modalMensaje(ctx: IGCtx, p: IPartidoG): void {
     (wa ? '<a class="cbp-btn pri" data-env="wa" href="' + esc(wa) + '" target="_blank" rel="noopener" style="color:#FF9F00">Abrir en WhatsApp</a>' : '') +
     (mail ? '<a class="cbp-btn' + (wa ? '' : ' pri') + '" data-env="mail" href="' + esc(mail) + '">Abrir correo</a>' : '') +
     '<button type="button" class="cbp-btn" data-env="copiar">Copiar texto</button></div>' +
-    '<p class="cbp-nota" style="margin:0">Al enviarlo, el partido pasa a «Pedido al rival». Cuando contesten, registra su respuesta.</p>';
+    '<p class="cbp-nota" style="margin:0">' + (p.local && enPlazo({ ...p, fecha: p.oficial }, ctx.plazo) ? 'Está dentro del plazo ordinario: es solo un aviso, no hace falta su conformidad. Recuerda marcarlo como cargado en la FBPA.' : 'Al enviarlo, el partido pasa a «Pedido al rival». Cuando contesten, registra su respuesta.') + '</p>';
   const body = abrirModal((p.local ? 'Comunicar a ' : 'Pedir a ') + (club ? club.nombre : p.rival), html, 620);
-  const marcar = (): void => { if (ctx.gest[p.id] && ctx.gest[p.id].estado === 'Pedido al rival') { return; } guardarGest(ctx, p, { EstadoG: 'Pedido al rival' }, 'Petición enviada a ' + (club ? club.nombre : p.rival)).then(() => ctx.recargar()); };
+  const marcar = (): void => { if (p.local && enPlazo({ ...p, fecha: p.oficial }, ctx.plazo)) { return; } if (ctx.gest[p.id] && ctx.gest[p.id].estado === 'Pedido al rival') { return; } guardarGest(ctx, p, { EstadoG: 'Pedido al rival' }, 'Petición enviada a ' + (club ? club.nombre : p.rival)).then(() => ctx.recargar()); };
   body.querySelectorAll('[data-env]').forEach((b: Element) => b.addEventListener('click', (ev: Event) => {
     const t = (body.querySelector('[name="txt"]') as HTMLTextAreaElement).value;
     const k = b.getAttribute('data-env');

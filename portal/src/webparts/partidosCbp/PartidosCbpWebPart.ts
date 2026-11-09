@@ -7,9 +7,11 @@ import { cargarEstilos3 } from '../../common/estilos3';
 import { cargarEstilos4 } from '../../common/estilos4';
 import { porTitulo, getJ, formModal } from '../../common/sp2';
 import { IPartidoG, IGest, IClub, IGCtx, cargarGestion, cargarClubes, esCoordinador, guardarGest, vPartidos, enlazarGestion, vClubes, enlazarClubes } from './gestion';
-import { IPartido, IRegla, IPista, IAlerta, IJugV, analizar, leerDisponibilidad, instalacionDe, minDia, hm, durTxt, DIA_TXT, FRANJAS } from './motor';
+import { IPartido, IRegla, IPista, IAlerta, IJugV, IPlazo, analizar, leerDisponibilidad, instalacionDe, minDia, hm, durTxt, DIA_TXT, FRANJAS, PLAZO_DEF } from './motor';
+import { IEscEstado, nuevoEstado, vEscenarios, enlazarEscenarios, vista, CSS_ESC } from './escenarios';
 
-export interface IPartidosCbpWebPartProps { titulo: string; margen: number; }
+export interface IPartidosCbpWebPartProps { titulo: string; margen: number; plazoDia: string; plazoHora: string; }
+const DIAS_PLAZO = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
 
 interface IEq { id: number; nombre: string; codigo: string; franja: string; dur: number; pref: string; alt: string; catPDM: string; }
 type Tab = 'semana' | 'temporada' | 'clubes' | 'reglas';
@@ -67,15 +69,20 @@ export default class PartidosCbpWebPart extends BaseClientSideWebPart<IPartidosC
   private eqs: IEq[] = []; private reglas: IRegla[] = []; private pistas: IPista[] = [];
   private sel: number = -1;
   private jugs: IJugV[] = [];
+  private est: IEscEstado = nuevoEstado();
 
   protected onInit(): Promise<void> {
     cargarEstilos(); cargarEstilosUi(); cargarEstilos3(); cargarEstilos4();
-    if (!document.getElementById('cbp-css5')) { const s = document.createElement('style'); s.id = 'cbp-css5'; s.textContent = CSS5; document.head.appendChild(s); }
+    if (!document.getElementById('cbp-css5')) { const s = document.createElement('style'); s.id = 'cbp-css5'; s.textContent = CSS5 + CSS_ESC; document.head.appendChild(s); }
     const h = window.location.hash.match(/semana=(\d{4}-\d{2}-\d{2})/); if (h) { this.semana = lunes(new Date(h[1] + 'T12:00:00')); }
     return this.cargar();
   }
 
   private get margen(): number { return this.properties.margen === undefined ? 30 : this.properties.margen; }
+  private get plazo(): IPlazo {
+    const d = DIAS_PLAZO.indexOf((this.properties.plazoDia || '').toLowerCase()); const h = (this.properties.plazoHora || '').match(/^(\d{1,2}):(\d{2})$/);
+    return { dia: d >= 0 ? d : PLAZO_DEF.dia, hora: h ? +h[1] * 60 + +h[2] : PLAZO_DEF.hora };
+  }
 
   private cargar(): Promise<void> {
     const c = this.context.spHttpClient; const w = this.context.pageContext.web.absoluteUrl;
@@ -116,7 +123,7 @@ export default class PartidosCbpWebPart extends BaseClientSideWebPart<IPartidosC
   private semanaDe(d: Date): IPartidoG[] { const a = d.getTime(); const b = a + 7 * DIA; return this.partidos.filter((p: IPartidoG) => p.fecha.getTime() >= a && p.fecha.getTime() < b); }
   private ctx(semana: IPartidoG[]): IGCtx {
     const lineas = (t: string): string[] => t.split(/\n/).map((x: string) => x.trim()).filter((x: string) => x);
-    return { c: this.context.spHttpClient, w: this.context.pageContext.web.absoluteUrl, usuario: this.context.pageContext.user.displayName, esCoord: this.esCoord, margen: this.margen,
+    return { c: this.context.spHttpClient, w: this.context.pageContext.web.absoluteUrl, usuario: this.context.pageContext.user.displayName, esCoord: this.esCoord, margen: this.margen, plazo: this.plazo,
       semana, gest: this.gest, clubes: this.clubes, pistas: this.pistas, reglas: this.reglas, jugs: this.jugs,
       eqInfo: (p: IPartido) => { const e = this.eqs.filter((x: IEq) => x.nombre === p.equipo)[0]; return { pref: e ? lineas(e.pref) : [], alt: e ? lineas(e.alt) : [] }; },
       recargar: () => { this.cargar().then(() => this.render()); } };
@@ -145,15 +152,22 @@ export default class PartidosCbpWebPart extends BaseClientSideWebPart<IPartidosC
 
     let cuerpo = '';
     const gctx = this.ctx(ps);
-    if (this.tab === 'semana') { cuerpo = this.vSemana(ps, al) + (ps.length ? vPartidos(gctx, al) : ''); } else if (this.tab === 'temporada') { cuerpo = this.vTemporada(); }
+    const clave = String(this.semana.getTime());
+    if (this.est.semanaKey !== clave) { this.est = nuevoEstado(); this.est.semanaKey = clave; }
+    if (this.tab === 'semana') {
+      const v = vista(this.est, ps, al);
+      cuerpo = (this.esCoord && ps.length ? vEscenarios(gctx, this.est, al) : '') + this.vSemana(v.ps, v.al, v.movidos) + (ps.length ? vPartidos(gctx, al) : '');
+    } else if (this.tab === 'temporada') { cuerpo = this.vTemporada(); }
     else if (this.tab === 'clubes') { const riv: string[] = []; this.partidos.forEach((p: IPartidoG) => { if (riv.indexOf(p.rival) < 0) { riv.push(p.rival); } }); cuerpo = vClubes(gctx, riv); } else { cuerpo = this.vReglas(); }
     this.domElement.innerHTML = '<div class="cbp"><div class="cbp-wrap" style="padding-top:20px;gap:18px">' + hero + tabs + cuerpo + '</div></div>';
     this.enlazar(al);
     enlazarGestion(this.domElement, gctx, al); enlazarClubes(this.domElement, gctx);
+    if (this.tab === 'semana' && this.esCoord) { enlazarEscenarios(this.domElement, gctx, this.est, al, () => this.render()); }
   }
 
   /* ---------- Semana ---------- */
-  private vSemana(ps: IPartido[], al: IAlerta[]): string {
+  private vSemana(ps: IPartido[], al: IAlerta[], movidos?: { [id: number]: Date }): string {
+    const mov = movidos || {};
     if (!ps.length) { return '<div class="cbp-vacio">No hay partidos publicados por la FBPA esta semana.</div>'; }
     const grav: { [id: number]: string } = {};
     al.forEach((a: IAlerta) => a.partidos.forEach((id: number) => { if (!grav[id] || a.grav === 'critica') { grav[id] = a.grav; } }));
@@ -178,12 +192,13 @@ export default class PartidosCbpWebPart extends BaseClientSideWebPart<IPartidosC
         const mods = this.pistas.filter((x: IPista) => x.inst === k);
         const res = mods.map((m: IPista) => m.disp.filter((v: { dia: number }) => v.dia === d.getDay()).map((v: { desde: number; hasta: number }) => '<div class="cbp-tl-res" style="left:' + pos(v.desde) + '%;width:' + (pos(v.hasta) - pos(v.desde)) + '%" title="Reserva ' + esc(m.modulo) + ' ' + hm(v.desde) + '–' + hm(v.hasta) + '"></div>').join('')).join('');
         const nMods = mods.filter((m: IPista) => m.disp.some((v: { dia: number }) => v.dia === d.getDay())).length;
-        const bloques = lista.map((p: IPartido) => { const s = minDia(p.fecha);
-          return '<button type="button" class="cbp-tl-p' + (p.local ? '' : ' fuera') + (grav[p.id] ? ' ' + grav[p.id] : '') + (hl.indexOf(p.id) >= 0 ? ' hl' : '') + '" data-p="' + p.id + '" style="left:' + pos(s) + '%;width:' + Math.max(6, pos(s + p.dur) - pos(s)) + '%;top:' + (3 + lane[p.id] * 30) + 'px" title="' + esc(p.equipo + ' · ' + hm(s) + ' · ' + (p.local ? 'vs ' : 'en ') + p.rival + (p.local ? '' : ' · ' + p.lugar)) + '">' + hm(s) + ' ' + esc(p.codigo || p.equipo) + '</button>'; }).join('');
+        const bloques = lista.map((p: IPartido) => { const s = minDia(p.fecha); const antes = mov[p.id];
+          const fantasma = antes && antes.toDateString() === p.fecha.toDateString() ? '<span class="cbp-tl-p ghost' + (p.local ? '' : ' fuera') + '" style="left:' + pos(minDia(antes)) + '%;width:' + Math.max(6, pos(minDia(antes) + p.dur) - pos(minDia(antes))) + '%;top:' + (3 + lane[p.id] * 30) + 'px">' + hm(minDia(antes)) + '</span>' : '';
+          return fantasma + '<button type="button" class="cbp-tl-p' + (p.local ? '' : ' fuera') + (grav[p.id] ? ' ' + grav[p.id] : '') + (antes ? ' mov' : '') + (hl.indexOf(p.id) >= 0 ? ' hl' : '') + '" data-p="' + p.id + '" style="left:' + pos(s) + '%;width:' + Math.max(6, pos(s + p.dur) - pos(s)) + '%;top:' + (3 + lane[p.id] * 30) + 'px" title="' + esc(p.equipo + ' · ' + hm(s) + ' · ' + (p.local ? 'vs ' : 'en ') + p.rival + (p.local ? '' : ' · ' + p.lugar) + (antes ? ' · antes ' + DIA_TXT[antes.getDay()].slice(0, 3) + ' ' + hm(minDia(antes)) : '')) + '">' + hm(s) + ' ' + esc(p.codigo || p.equipo) + '</button>'; }).join('');
         return '<div class="cbp-tl-fila"><b>' + esc(k.charAt(0) === '~' ? 'Fuera de casa' : k) + '<small>' + (k.charAt(0) === '~' ? lista.length + ' desplazamiento' + (lista.length === 1 ? '' : 's') : nMods + ' módulo' + (nMods === 1 ? '' : 's') + ' reservado' + (nMods === 1 ? '' : 's')) + '</small></b><div class="cbp-tl-carril" style="height:' + alto + 'px">' + res + bloques + '</div></div>';
       }).join('') + '</div>';
     }).join('');
-    const ley = '<div class="cbp-tl-ley"><span><i style="background:#090909"></i>En casa</span><span><i style="border:1.5px dashed #090909"></i>Fuera</span><span><i style="background:#B00020"></i>Conflicto</span><span><i style="box-shadow:inset 0 0 0 2px #FF9F00"></i>Aviso</span><span><i style="background:rgba(255,159,0,.2)"></i>Pista reservada</span></div>';
+    const ley = '<div class="cbp-tl-ley">' + (Object.keys(mov).length ? '<span><i style="outline:2px dashed #FF9F00"></i>Movido por el escenario</span>' : '') + '<span><i style="background:#090909"></i>En casa</span><span><i style="border:1.5px dashed #090909"></i>Fuera</span><span><i style="background:#B00020"></i>Conflicto</span><span><i style="box-shadow:inset 0 0 0 2px #FF9F00"></i>Aviso</span><span><i style="background:rgba(255,159,0,.2)"></i>Pista reservada</span></div>';
     return '<div class="cbp-of-grid" style="grid-template-columns:minmax(0,1fr) minmax(0,1.6fr)"><div class="cbp-col"><div class="cbp-box-h"><h3 class="cbp-h2" style="font-size:24px;margin:0">Alertas</h3><span class="cbp-nota">' + al.length + '</span></div>' + alertas + '</div>' +
       '<div class="cbp-col">' + tl + ley + '</div></div>';
   }
@@ -222,7 +237,11 @@ export default class PartidosCbpWebPart extends BaseClientSideWebPart<IPartidosC
     const fr = '<section class="cbp-box"><div class="cbp-box-h"><h3>Franjas FBPA 2026/27</h3></div><p class="cbp-nota" style="margin:0">Horas de inicio oficiales por grupo (texto de bandas facilitado por el club). La Sénior Femenina A es competición nacional y no se valida aquí.</p><div class="cbp-scroll"><table class="cbp-tabla pt"><thead><tr><th>Grupo</th><th>Oficial</th><th>Con conformidad o condición</th></tr></thead><tbody>' +
       Object.keys(FRANJAS).map((g: string) => { const t = (tp: string[]): string => FRANJAS[g].filter((f: { tipo: string }) => tp.indexOf(f.tipo) >= 0).map((f: { dias: number[]; desde: string; hasta: string }) => f.dias.map((x: number) => DIA_TXT[x].slice(0, 3)).join('/') + ' ' + (f.desde === f.hasta ? f.desde : f.desde + '–' + f.hasta)).join(' · ');
         return '<tr><td><b>' + esc(g) + '</b></td><td>' + t(['oficial']) + '</td><td>' + t(['conformidad', 'condicion']) + '</td></tr>'; }).join('') + '</tbody></table></div></section>';
-    return tReglas + '<div class="cbp-of-grid" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)"><div class="cbp-col">' + tPistas + fr + '</div><div class="cbp-col">' + tEq + '</div></div>';
+    const pl = this.plazo;
+    const tPlazo = '<section class="cbp-box"><div class="cbp-box-h"><h3>Plazo ordinario y normativa</h3></div>' +
+      '<p class="cbp-nota" style="margin:0">El equipo local puede fijar o ajustar la hora de sus partidos sin notificar al rival hasta el <b>' + DIAS_PLAZO[pl.dia] + ' a las ' + hm(pl.hora) + ' de la semana anterior</b> al partido. Pasado ese plazo, el cambio necesita la conformidad del rival. El plazo se cambia en la configuración de esta sección.</p>' +
+      '<p class="cbp-nota" style="margin:0">El Reglamento General 2026/27 (art. 155 B) fija además las 20:00 del lunes anterior a la jornada como límite para pedir cambios sin cuota; las condiciones exactas de cada competición están en sus normas específicas. <a href="https://www.fbpa.es/descargar?seccion=documentos&id=432&delegacion=1" target="_blank" rel="noopener">Reglamento General y de Competiciones FBPA 2026/27</a></p></section>';
+    return tPlazo + tReglas + '<div class="cbp-of-grid" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)"><div class="cbp-col">' + tPistas + fr + '</div><div class="cbp-col">' + tEq + '</div></div>';
   }
 
   /* ---------- Eventos ---------- */
@@ -286,7 +305,9 @@ export default class PartidosCbpWebPart extends BaseClientSideWebPart<IPartidosC
   protected getPropertyPaneConfiguration(): IPropertyPaneConfiguration {
     return { pages: [{ header: { description: 'Gestión de partidos' }, groups: [{ groupName: 'General', groupFields: [
       PropertyPaneTextField('titulo', { label: 'Título' }),
-      PropertyPaneSlider('margen', { label: 'Margen entre partidos en la misma pista (min)', min: 0, max: 60, step: 5 })
+      PropertyPaneSlider('margen', { label: 'Margen entre partidos en la misma pista (min)', min: 0, max: 60, step: 5 }),
+      PropertyPaneTextField('plazoDia', { label: 'Plazo ordinario: día de la semana anterior', description: 'Por defecto viernes' }),
+      PropertyPaneTextField('plazoHora', { label: 'Plazo ordinario: hora', description: 'Por defecto 11:00' })
     ] }] }] };
   }
 }

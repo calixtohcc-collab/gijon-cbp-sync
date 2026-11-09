@@ -276,3 +276,182 @@ export function asignarPistas(semana: IPartido[], pistas: IPista[], margen: numb
   });
   return res;
 }
+
+/* =====================================================================
+   Plazo ordinario: el local fija o ajusta la hora sin conformidad del rival
+   hasta el viernes a las 11:00 de la semana anterior (configurable).
+   ===================================================================== */
+export interface IPlazo { dia: number; hora: number; } // dia: 5 = viernes; hora en minutos
+export const PLAZO_DEF: IPlazo = { dia: 5, hora: 11 * 60 };
+export function limitePlazo(p: IPartido, pl?: IPlazo): Date {
+  const x = pl || PLAZO_DEF;
+  const d = new Date(p.fecha.getFullYear(), p.fecha.getMonth(), p.fecha.getDate());
+  const lun = new Date(d); lun.setDate(d.getDate() - ((d.getDay() + 6) % 7)); // lunes de la semana del partido
+  const lim = new Date(lun); lim.setDate(lun.getDate() - 7 + ((x.dia + 6) % 7)); // ese día de la semana anterior
+  lim.setHours(Math.floor(x.hora / 60), x.hora % 60, 0, 0);
+  return lim;
+}
+export function enPlazo(p: IPartido, pl?: IPlazo, ahora?: Date): boolean { return p.local && (ahora || new Date()).getTime() < limitePlazo(p, pl).getTime(); }
+
+/* =====================================================================
+   Motor de escenarios: resuelve la semana completa a la vez
+   ===================================================================== */
+export interface IPeticion { fecha: Date; nota: string; de: string; }
+export interface ICand { fecha: Date; lugar: string; pista: string; tipoFranja: string; }
+export interface ICambio { id: number; desde: Date; hasta: Date; lugar: string; pista: string; pideRival: boolean; enPlazo: boolean; cambiaDia: boolean; peticion: boolean; tipoFranja: string; }
+export interface IEscenario { clave: string; nombre: string; desc: string; cambios: ICambio[]; alertas: IAlerta[]; criticas: number; avisos: number; holguraMin: number; coste: number; partidos: IPartido[]; }
+export interface IResolverOpts {
+  reglas: IRegla[]; pistas: IPista[]; margen: number; jugs: IJugV[];
+  prefsDe: (p: IPartido) => { pref: string[]; alt: string[] };
+  fijos: { [id: number]: boolean };            // inamovibles o ya en trámite
+  forzados: { [id: number]: ICand };           // coordinación ha elegido esta hora: se respeta
+  peticiones: { [id: number]: IPeticion };
+  plazo?: IPlazo; ahora?: Date;
+}
+
+/** Parejas de partidos que necesitan separación (reglas de entrenadores y jugadores habituales) */
+interface IPar { a: number; b: number; req: number; }
+function pares(ps: IPartido[], reglas: IRegla[], pistas: IPista[], jugs: IJugV[]): IPar[] {
+  const out: IPar[] = []; const k: { [s: string]: IPar } = {};
+  const add = (a: IPartido, b: IPartido, req: number): void => { const s = Math.min(a.id, b.id) + '-' + Math.max(a.id, b.id); if (!k[s] || k[s].req < req) { k[s] = { a: a.id, b: b.id, req }; } };
+  reglas.forEach((r: IRegla) => ps.filter((p: IPartido) => p.codigo === r.a && cumple(r.condA, p)).forEach((pa: IPartido) => ps.filter((q: IPartido) => q.codigo === r.b && q.id !== pa.id && cumple(r.condB, q)).forEach((pb: IPartido) => add(pa, pb, r.min))));
+  ps.forEach((pa: IPartido, i: number) => ps.slice(i + 1).forEach((pb: IPartido) => {
+    if (pa.equipo === pb.equipo) { return; }
+    if (jugs.some((j: IJugV) => { const h = [j.equipo].concat(j.habitual); return h.indexOf(pa.equipo) >= 0 && h.indexOf(pb.equipo) >= 0; })) { add(pa, pb, Math.max(pa.dur, pb.dur) + MARGEN_OTRA); }
+  }));
+  Object.keys(k).forEach((s: string) => out.push(k[s]));
+  return out;
+}
+
+/** Horas posibles para un partido: en casa, dentro de las reservas de sus pistas; fuera, horas oficiales de la franja (a pedir al rival) */
+function candidatos(p: IPartido, pistas: IPista[], pref: string[], alt: string[], soloMismoDia: boolean): ICand[] {
+  const base = new Date(p.fecha.getFullYear(), p.fecha.getMonth(), p.fecha.getDate());
+  const dias: Date[] = [base];
+  if (!soloMismoDia) {
+    const lun = new Date(base); lun.setDate(base.getDate() - ((base.getDay() + 6) % 7));
+    [5, 6].forEach((o: number) => { const d = new Date(lun.getFullYear(), lun.getMonth(), lun.getDate() + o); if (d.toDateString() !== base.toDateString()) { dias.push(d); } });
+  }
+  const out: ICand[] = []; const visto: { [k: string]: boolean } = {};
+  dias.forEach((d: Date) => {
+    if (p.local) {
+      const claves = pref.concat(alt.filter((a: string) => pref.indexOf(a) < 0));
+      claves.forEach((clave: string) => {
+        const pi = pistas.filter((k: IPista) => norm(k.clave) === norm(clave))[0]; if (!pi) { return; }
+        pi.disp.filter((v: IVentana) => v.dia === d.getDay()).forEach((v: IVentana) => {
+          for (let t = v.desde; t + p.dur <= v.hasta; t += 30) {
+            const f = new Date(d.getFullYear(), d.getMonth(), d.getDate(), Math.floor(t / 60), t % 60);
+            const tf = franjaDe({ ...p, fecha: f }).tipo; if (tf === 'fuera') { continue; }
+            const k = f.getTime() + '|' + norm(pi.inst); if (visto[k]) { continue; } visto[k] = true;
+            out.push({ fecha: f, lugar: pi.alias, pista: pi.clave, tipoFranja: tf });
+          }
+        });
+      });
+    } else {
+      franjasDelDia(p, d.getDay()).filter((t: number) => t % 30 === 0).forEach((t: number) => {
+        const f = new Date(d.getFullYear(), d.getMonth(), d.getDate(), Math.floor(t / 60), t % 60);
+        const k = String(f.getTime()); if (visto[k]) { return; } visto[k] = true;
+        out.push({ fecha: f, lugar: p.lugar, pista: '', tipoFranja: 'oficial' });
+      });
+    }
+  });
+  return out;
+}
+
+const ESCENARIOS: { clave: string; nombre: string; desc: string; wCambio: number; wAviso: number; wHolgura: number; soloCasa: boolean; soloMismoDia: boolean }[] = [
+  { clave: 'menos', nombre: 'Menos cambios', desc: 'Resuelve los conflictos tocando el menor número de partidos, primero los de casa dentro de plazo.', wCambio: 12, wAviso: 3, wHolgura: 0.3, soloCasa: false, soloMismoDia: false },
+  { clave: 'holgura', nombre: 'Más holgura', desc: 'Busca el mayor margen entre partidos que comparten entrenador o jugadores, aunque haya que mover alguno más.', wCambio: 4, wAviso: 3, wHolgura: 3, soloCasa: false, soloMismoDia: false },
+  { clave: 'casa', nombre: 'Solo partidos en casa', desc: 'Solo mueve partidos en casa, el mismo día: no depende de ningún club rival.', wCambio: 10, wAviso: 3, wHolgura: 0.3, soloCasa: true, soloMismoDia: true }
+];
+export const NOMBRES_ESCENARIO = ESCENARIOS.map((e) => ({ clave: e.clave, nombre: e.nombre, desc: e.desc }));
+
+/** Resuelve la semana para cada escenario. Búsqueda en haz: en cada paso mueve un partido de los que siguen en conflicto. */
+export function resolver(semana: IPartido[], o: IResolverOpts): IEscenario[] {
+  const ahora = o.ahora || new Date();
+  const conHora = semana.filter((p: IPartido) => !p.sinHora);
+  // Punto de partida: horas vigentes + lo que coordinación ha forzado
+  const inicio: { [id: number]: ICand } = {};
+  conHora.forEach((p: IPartido) => { inicio[p.id] = o.forzados[p.id] || { fecha: p.fecha, lugar: p.lugar, pista: '', tipoFranja: '' }; });
+  const orig: { [id: number]: IPartido } = {}; conHora.forEach((p: IPartido) => { orig[p.id] = p; });
+  const relacion = pares(conHora, o.reglas, o.pistas, o.jugs);
+
+  return ESCENARIOS.map((esc) => {
+    const movible = (p: IPartido): boolean => !o.fijos[p.id] && !o.forzados[p.id] && (!esc.soloCasa || p.local);
+    const cands: { [id: number]: ICand[] } = {};
+    conHora.filter(movible).forEach((p: IPartido) => {
+      const pr = o.prefsDe(p); let cs = candidatos(p, o.pistas, pr.pref, pr.alt, esc.soloMismoDia);
+      const pet = o.peticiones[p.id];
+      if (pet && !cs.some((c: ICand) => c.fecha.getTime() === pet.fecha.getTime())) { cs = cs.concat([{ fecha: pet.fecha, lugar: p.lugar, pista: '', tipoFranja: '' }]); }
+      cands[p.id] = cs;
+    });
+    const memo: { [k: string]: { crit: number; av: number; al: IAlerta[] } } = {};
+    const materializa = (asig: { [id: number]: ICand }): IPartido[] => conHora.map((p: IPartido) => ({ ...p, fecha: asig[p.id].fecha, lugar: asig[p.id].lugar }));
+    const evalua = (asig: { [id: number]: ICand }): { coste: number; crit: number; av: number; hol: number; minHol: number } => {
+      const ps = materializa(asig);
+      const porDia: { [d: string]: IPartido[] } = {};
+      ps.forEach((p: IPartido) => { const k = p.fecha.toDateString(); (porDia[k] = porDia[k] || []).push(p); });
+      let crit = 0; let av = 0;
+      Object.keys(porDia).forEach((d: string) => {
+        const key = d + '#' + porDia[d].map((p: IPartido) => p.id + '@' + p.fecha.getTime() + '@' + p.lugar).sort().join(',');
+        if (!memo[key]) { const al = analizar(porDia[d], o.reglas, o.pistas, o.margen, o.jugs); memo[key] = { crit: al.filter((a: IAlerta) => a.grav === 'critica').length, av: al.filter((a: IAlerta) => a.grav === 'aviso').length, al }; }
+        crit += memo[key].crit; av += memo[key].av;
+      });
+      let cambios = 0; let pet = 0;
+      ps.forEach((p: IPartido) => {
+        const p0 = orig[p.id]; const pe = o.peticiones[p.id];
+        if (pe && p.fecha.getTime() === pe.fecha.getTime()) { pet++; }
+        if (p.fecha.getTime() === p0.fecha.getTime() && norm(p.lugar) === norm(p0.lugar)) { return; }
+        if (o.forzados[p.id]) { return; }
+        let w = p.local ? (enPlazo(p0, o.plazo, ahora) ? 1 : 2.5) : 4;
+        if (p.fecha.toDateString() !== p0.fecha.toDateString()) { w += 2; }
+        w += Math.abs(p.fecha.getTime() - p0.fecha.getTime()) / 3600000 / 4;
+        if (pe && p.fecha.getTime() === pe.fecha.getTime()) { w -= 0.8; }
+        cambios += w;
+      });
+      let hol = 0; let minHol = 9999;
+      const byId: { [id: number]: IPartido } = {}; ps.forEach((p: IPartido) => { byId[p.id] = p; });
+      relacion.forEach((r: IPar) => {
+        const a = byId[r.a]; const b = byId[r.b]; if (!a || !b || a.fecha.toDateString() !== b.fecha.toDateString()) { return; }
+        const s = Math.abs(a.fecha.getTime() - b.fecha.getTime()) / 60000 - r.req;
+        if (s >= 0) { hol += Math.min(s, 120) / 30; minHol = Math.min(minHol, s); }
+      });
+      const coste = crit * 1000 + av * esc.wAviso + cambios * esc.wCambio - hol * esc.wHolgura - pet * 6;
+      return { coste, crit, av, hol, minHol };
+    };
+    const clave = (asig: { [id: number]: ICand }): string => Object.keys(asig).map((k: string) => k + ':' + asig[+k].fecha.getTime() + asig[+k].lugar).join('|');
+    interface IEst { asig: { [id: number]: ICand }; r: { coste: number; crit: number; av: number; hol: number; minHol: number }; }
+    const e0: IEst = { asig: { ...inicio }, r: evalua(inicio) };
+    let haz: IEst[] = [e0]; let mejor = e0; const vistos: { [k: string]: boolean } = {}; vistos[clave(inicio)] = true;
+    const ANCHO = 10; const PROF = 5;
+    for (let paso = 0; paso < PROF; paso++) {
+      const sig: IEst[] = [];
+      haz.forEach((st: IEst) => {
+        const ps = materializa(st.asig);
+        const al = analizar(ps, o.reglas, o.pistas, o.margen, o.jugs);
+        let obj: number[] = [];
+        al.filter((a: IAlerta) => a.grav === 'critica' || (a.grav === 'aviso' && a.tipo !== 'hora')).forEach((a: IAlerta) => a.partidos.forEach((id: number) => { if (obj.indexOf(id) < 0) { obj.push(id); } }));
+        if (esc.wHolgura > 1) { relacion.forEach((r: IPar) => { [r.a, r.b].forEach((id: number) => { if (obj.indexOf(id) < 0) { obj.push(id); } }); }); }
+        Object.keys(o.peticiones).forEach((k: string) => { if (obj.indexOf(+k) < 0) { obj.push(+k); } });
+        obj = obj.filter((id: number) => !!cands[id]);
+        obj.forEach((id: number) => cands[id].forEach((c: ICand) => {
+          const cur = st.asig[id]; if (cur.fecha.getTime() === c.fecha.getTime() && norm(cur.lugar) === norm(c.lugar)) { return; }
+          const asig = { ...st.asig }; asig[id] = c;
+          const k = clave(asig); if (vistos[k]) { return; } vistos[k] = true;
+          sig.push({ asig, r: evalua(asig) });
+        }));
+      });
+      if (!sig.length) { break; }
+      sig.sort((a: IEst, b: IEst) => a.r.coste - b.r.coste);
+      haz = sig.slice(0, ANCHO);
+      if (haz[0].r.coste < mejor.r.coste) { mejor = haz[0]; }
+    }
+    const final = materializa(mejor.asig);
+    const alertas = analizar(final, o.reglas, o.pistas, o.margen, o.jugs);
+    const cambios: ICambio[] = final.filter((p: IPartido) => { const p0 = orig[p.id]; return p.fecha.getTime() !== p0.fecha.getTime() || norm(p.lugar) !== norm(p0.lugar); }).map((p: IPartido): ICambio => {
+      const p0 = orig[p.id]; const c = mejor.asig[p.id]; const pe = o.peticiones[p.id];
+      return { id: p.id, desde: p0.fecha, hasta: p.fecha, lugar: p.lugar, pista: c.pista, pideRival: !p.local || !enPlazo(p0, o.plazo, ahora) || c.tipoFranja === 'conformidad' || c.tipoFranja === 'condicion',
+        enPlazo: enPlazo(p0, o.plazo, ahora), cambiaDia: p.fecha.toDateString() !== p0.fecha.toDateString(), peticion: !!pe && pe.fecha.getTime() === p.fecha.getTime(), tipoFranja: c.tipoFranja };
+    }).sort((a: ICambio, b: ICambio) => a.hasta.getTime() - b.hasta.getTime());
+    return { clave: esc.clave, nombre: esc.nombre, desc: esc.desc, cambios, alertas, criticas: mejor.r.crit, avisos: mejor.r.av, holguraMin: mejor.r.minHol === 9999 ? -1 : Math.round(mejor.r.minHol), coste: mejor.r.coste,
+      partidos: semana.map((p: IPartido) => { const a = mejor.asig[p.id]; return a ? { ...p, fecha: a.fecha, lugar: a.lugar } : p; }) };
+  });
+}
