@@ -41,6 +41,12 @@ export const MAPA = [
   ['LIGA BENJAMIN FBPA MAS - 1 FASE - 1', 'I-LANZA GIJON CBP "A"', 'Benjamín Masculino A'],
   ['LIGA BENJAMIN FBPA MAS - 1 FASE - 2', 'I-LANZA GIJON CBP "B"-ESTUDIANTES N 1', 'Benjamín Masculino B'],
   ['LIGA BENJAMIN FBPA MAS - 1 FASE - 2', 'I-LANZA GIJON CBP "C"', 'Benjamín Masculino C'],
+  // Juegos Deportivos (escuelas deportivas en colegios)
+  ['ALEVIN FEM - PRIMERA FASE - GRUPO B', 'COL PUMARIN-ESCUELONA', 'Escuela Alevín Femenino Pumarín'],
+  ['ALEVIN FEM - PRIMERA FASE - GRUPO A', 'COL ASTURIAS-XOSEFA DE JOVELLANOS', 'Escuela Alevín Femenino Xosefa'],
+  ['ALEVIN MAS - PRIMERA FASE - GRUPO B', 'COLEGIO ASTURIAS- XOSEFA DE JOVELLANOS', 'Escuela Alevín Masculino Xosefa'],
+  ['BENJAMIN FEM - PRIMERA FASE - GRUPO A', 'COL EL LLANO-XOSEFA DE JOVELLANOS', 'Escuela Benjamín Femenino Xosefa'],
+  ['BENJAMIN MAS - PRIMERA FASE - GRUPO A', 'COL EL LLANO-PUMARIN', 'Escuela Benjamín Masculino El Llano'],
   ['LIGA DE MADRES', 'C.B. PUMARIN', 'Equipo de Madres'],
   ['LIGA DE PADRES', 'C.B. PUMARIN', 'Equipo de Padres']
 ];
