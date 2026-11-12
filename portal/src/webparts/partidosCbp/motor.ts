@@ -366,7 +366,8 @@ function candidatos(p: IPartido, pistas: IPista[], pref: string[], alt: string[]
       // 2) Último recurso: pedir al PDM un módulo en sus instalaciones a una hora de franja (fuera de la reserva del club), el mismo día
       if (d.toDateString() === base.toDateString()) {
         const insts: { [k: string]: IPista } = {};
-        pistas.filter((k: IPista) => k.inst && puedeUsar(p, k)).forEach((k: IPista) => { if (!insts[norm(k.inst)]) { insts[norm(k.inst)] = k; } });
+        // Solo instalaciones que ya usa ese equipo (habituales o alternativas): son las adecuadas para su categoría
+        pistas.filter((k: IPista) => k.inst && puedeUsar(p, k) && claves.some((c: string) => norm(c) === norm(k.clave))).forEach((k: IPista) => { if (!insts[norm(k.inst)]) { insts[norm(k.inst)] = k; } });
         Object.keys(insts).forEach((ki: string) => {
           const k0 = insts[ki];
           franjasDelDia(p, d.getDay(), true).forEach((t: number) => {
