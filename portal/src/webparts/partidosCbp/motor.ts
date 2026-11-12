@@ -3,7 +3,9 @@
 export interface IPartido { id: number; equipo: string; codigo: string; fecha: Date; local: boolean; rival: string; lugar: string; sinHora: boolean; dur: number; franja: string; }
 export interface IRegla { id: number; titulo: string; a: string; condA: string; b: string; condB: string; min: number; motivo: string; }
 export interface IVentana { dia: number; desde: number; hasta: number; }
-export interface IPista { id: number; clave: string; inst: string; modulo: string; alias: string; disp: IVentana[]; dispTexto: string; controlar: boolean; orden: number; pdm?: string; }
+export interface IPista { id: number; clave: string; inst: string; modulo: string; alias: string; disp: IVentana[]; dispTexto: string; controlar: boolean; orden: number; pdm?: string; permitidos?: string[]; }
+/** ¿Puede este partido usar este módulo? (vacío = cualquiera; si no, categorías, nombres o códigos de equipo) */
+export function puedeUsar(p: IPartido, k: IPista): boolean { const ps = k.permitidos || []; if (!ps.length) { return true; } const eq = norm(p.equipo); return ps.some((t: string) => { const n = norm(t); return !!n && (eq.indexOf(n) === 0 || norm(p.codigo) === n); }); }
 export interface IJugV { nombre: string; equipo: string; habitual: string[]; ocasional: string[]; }
 export type Gravedad = 'critica' | 'aviso' | 'info';
 export interface IAlerta { tipo: 'conflicto' | 'saturacion' | 'reserva' | 'franja' | 'hora'; grav: Gravedad; partidos: number[]; titulo: string; detalle: string; accion: string; }
@@ -31,8 +33,8 @@ export function leerDisponibilidad(txt: string): IVentana[] {
 }
 
 /* ---------- Franjas horarias FBPA 2026/27 (horas de inicio) ---------- */
-interface IFranja { dias: number[]; desde: string; hasta: string; tipo: 'oficial' | 'conformidad' | 'condicion'; cond?: string; }
-const F = (dias: number[], desde: string, hasta: string, tipo: IFranja['tipo'], cond?: string): IFranja => ({ dias, desde, hasta, tipo, cond });
+export interface IFranja { id?: number; dias: number[]; desde: string; hasta: string; tipo: 'oficial' | 'conformidad' | 'condicion'; cond?: string; pref?: boolean; }
+const F = (dias: number[], desde: string, hasta: string, tipo: IFranja['tipo'], cond?: string): IFranja => ({ dias, desde, hasta, tipo, cond, pref: true });
 export const FRANJAS: { [g: string]: IFranja[] } = {
   'Júnior y sénior': [F([4, 5], '18:30', '21:00', 'conformidad'), F([6], '16:00', '16:30', 'oficial'), F([6], '18:00', '18:30', 'oficial'), F([6], '20:00', '20:30', 'oficial'),
     F([0], '10:00', '12:30', 'oficial'), F([0], '16:00', '16:30', 'oficial'), F([0], '18:00', '18:30', 'oficial'), F([0], '20:00', '20:00', 'oficial')],
@@ -43,15 +45,21 @@ export const FRANJAS: { [g: string]: IFranja[] } = {
     F([0], '09:30', '12:30', 'condicion', 'conformidad del rival y, si pide transporte, del coordinador de zona visitante')]
 };
 const aMin = (s: string): number => +s.slice(0, 2) * 60 + +s.slice(3, 5);
+/** Sustituye las franjas por las configuradas en la lista «Partidos · Franjas» */
+export function cargarFranjas(fs: { grupo: string; f: IFranja }[]): void {
+  if (!fs.length) { return; }
+  Object.keys(FRANJAS).forEach((k: string) => { delete FRANJAS[k]; });
+  fs.forEach((x) => { (FRANJAS[x.grupo] = FRANJAS[x.grupo] || []).push(x.f); });
+}
 
-function franjaDe(p: IPartido): { tipo: 'oficial' | 'conformidad' | 'condicion' | 'fuera' | 'n/a'; cond?: string; opciones: string } {
+function franjaDe(p: IPartido): { tipo: 'oficial' | 'conformidad' | 'condicion' | 'fuera' | 'n/a'; cond?: string; opciones: string; pref?: boolean } {
   const fr = FRANJAS[p.franja];
   if (!fr) { return { tipo: 'n/a', opciones: '' }; }
   const d = p.fecha.getDay(); const t = minDia(p.fecha);
   const del = fr.filter((f: IFranja) => f.dias.indexOf(d) >= 0);
   const opciones = del.filter((f: IFranja) => f.tipo === 'oficial').map((f: IFranja) => f.desde === f.hasta ? f.desde : f.desde + '–' + f.hasta).join(', ');
   const en = del.filter((f: IFranja) => t >= aMin(f.desde) && t <= aMin(f.hasta));
-  const of = en.filter((f: IFranja) => f.tipo === 'oficial')[0]; if (of) { return { tipo: 'oficial', opciones }; }
+  const ofs = en.filter((f: IFranja) => f.tipo === 'oficial'); if (ofs.length) { return { tipo: 'oficial', opciones, pref: ofs.some((f: IFranja) => f.pref !== false) }; }
   const co = en.filter((f: IFranja) => f.tipo === 'condicion')[0]; if (co) { return { tipo: 'condicion', cond: co.cond, opciones }; }
   const cf = en.filter((f: IFranja) => f.tipo === 'conformidad')[0]; if (cf) { return { tipo: 'conformidad', opciones }; }
   return { tipo: 'fuera', opciones };
@@ -114,7 +122,7 @@ export function analizar(ps: IPartido[], reglas: IRegla[], pistas: IPista[], mar
       // Fuera del horario reservado
       lista.forEach((p: IPartido) => {
         const s = minDia(p.fecha); const e = s + p.dur;
-        const cabe = mods.some((m: IPista) => ventanas(m).some((v: IVentana) => s >= v.desde && e <= v.hasta));
+        const cabe = mods.some((m: IPista) => puedeUsar(p, m) && ventanas(m).some((v: IVentana) => s >= v.desde && e <= v.hasta));
         if (!cabe) {
           const res = mods.map((m: IPista) => ventanas(m).map((v: IVentana) => m.modulo + ' ' + hm(v.desde) + '–' + hm(v.hasta)).join(', ')).filter((x: string) => x).join(' · ');
           out.push({ tipo: 'reserva', grav: 'aviso', partidos: [p.id], titulo: 'Fuera del horario reservado en ' + inst,
@@ -129,12 +137,16 @@ export function analizar(ps: IPartido[], reglas: IRegla[], pistas: IPista[], mar
         if (simult.length < 2 || lista.slice(0, i).some((q: IPartido) => minDia(q.fecha) === s)) { return; }
         const libres = mods.filter((m: IPista) => ventanas(m).some((v: IVentana) => s >= v.desde && s < v.hasta));
         const cap = Math.max(libres.length, 0);
+        // Reparto de módulos respetando qué equipos pueden usar cada uno (los más restringidos primero)
+        const ocup: { [k: string]: boolean } = {};
+        const sinSitio = simult.slice().sort((x: IPartido, y: IPartido) => libres.filter((m: IPista) => puedeUsar(x, m)).length - libres.filter((m: IPista) => puedeUsar(y, m)).length)
+          .filter((q: IPartido) => { const m = libres.filter((k: IPista) => !ocup[k.clave] && puedeUsar(q, k))[0]; if (m) { ocup[m.clave] = true; return false; } return true; });
         // Sin ningún módulo reservado a esa hora ya lo avisa «Fuera del horario reservado»: aquí solo se mira la capacidad reservada
-        if (cap > 0 && simult.length > cap) {
+        if (cap > 0 && sinSitio.length > 0 && simult.length > 1) {
           const ya = out.filter((a: IAlerta) => a.tipo === 'saturacion' && simult.every((q: IPartido) => a.partidos.indexOf(q.id) >= 0))[0];
           if (ya) { return; }
           out.push({ tipo: 'saturacion', grav: 'critica', partidos: simult.map((q: IPartido) => q.id), titulo: inst + ' saturado el ' + DIA_TXT[dia] + ' a las ' + hm(s),
-            detalle: simult.length + ' partidos a la vez (' + simult.map((q: IPartido) => q.equipo + ' ' + hm(minDia(q.fecha)) + '–' + hm(minDia(q.fecha) + q.dur)).join(', ') + ') y el club solo tiene reservado' + (cap === 1 ? ' ' : 's ') + cap + ' módulo' + (cap === 1 ? '' : 's') + ' a esa hora (' + libres.map((m: IPista) => m.modulo).join(', ') + ').' + (margen ? ' Se cuentan ' + margen + ' min de margen entre partidos.' : ''),
+            detalle: simult.length + ' partidos a la vez (' + simult.map((q: IPartido) => q.equipo + ' ' + hm(minDia(q.fecha)) + '–' + hm(minDia(q.fecha) + q.dur)).join(', ') + ') y el club solo tiene reservado' + (cap === 1 ? ' ' : 's ') + cap + ' módulo' + (cap === 1 ? '' : 's') + ' a esa hora (' + libres.map((m: IPista) => m.modulo + ((m.permitidos || []).length ? ' solo ' + (m.permitidos || []).join('/') : '')).join(', ') + ').' + (margen ? ' Se cuentan ' + margen + ' min de margen entre partidos.' : ''),
             accion: 'Escalonar las horas o mover alguno a otra instalación (p. ej. Gijón Sur).' });
         }
       });
@@ -195,11 +207,11 @@ function conflictosJugadores(ps: IPartido[], pistas: IPista[], jugs: IJugV[]): I
 /* ---------- Propuestas: huecos válidos para mover un partido ---------- */
 export interface IHueco { fecha: Date; pista: string; tipoFranja: string; puntos: number; nota: string; }
 
-function franjasDelDia(p: IPartido, dia: number): number[] {
+function franjasDelDia(p: IPartido, dia: number, soloPref?: boolean): number[] {
   const fr = FRANJAS[p.franja];
   const out: number[] = [];
   if (!fr) { for (let t = 10 * 60; t <= 20 * 60; t += 30) { out.push(t); } return out; }
-  fr.filter((f: IFranja) => f.dias.indexOf(dia) >= 0 && f.tipo === 'oficial').forEach((f: IFranja) => { for (let t = aMin(f.desde); t <= aMin(f.hasta); t += 15) { out.push(t); } });
+  fr.filter((f: IFranja) => f.dias.indexOf(dia) >= 0 && f.tipo === 'oficial' && (!soloPref || f.pref !== false)).forEach((f: IFranja) => { for (let t = aMin(f.desde); t <= aMin(f.hasta); t += 15) { if (out.indexOf(t) < 0) { out.push(t); } } });
   return out;
 }
 
@@ -225,32 +237,34 @@ export function sugerir(p: IPartido, semana: IPartido[], reglas: IRegla[], pista
     if (p.local) {
       const claves = prefs.concat(alts.filter((a: string) => prefs.indexOf(a) < 0));
       claves.forEach((clave: string) => {
-        const pi = pistas.filter((k: IPista) => norm(k.clave) === norm(clave))[0]; if (!pi) { return; }
+        const pi = pistas.filter((k: IPista) => norm(k.clave) === norm(clave))[0]; if (!pi || !puedeUsar(p, pi)) { return; }
         pi.disp.filter((v: IVentana) => v.dia === d.getDay()).forEach((v: IVentana) => {
           for (let t = v.desde; t + p.dur <= v.hasta; t += 15) {
             const f = new Date(d.getFullYear(), d.getMonth(), d.getDate(), Math.floor(t / 60), t % 60);
             const cand: IPartido = { ...p, fecha: f, lugar: pi.alias };
-            const fr = franjaDe(cand); if (fr.tipo === 'fuera') { continue; }
+            const fr = franjaDe(cand); if (fr.tipo !== 'oficial' && fr.tipo !== 'n/a') { continue; } // solo franja oficial FBPA
             const ocupada = otros.some((q: IPartido) => q.local && asign[q.id] && norm(asign[q.id]) === norm(pi.clave) && q.fecha.toDateString() === f.toDateString() &&
               t < minDia(q.fecha) + q.dur + margen && minDia(q.fecha) < t + p.dur + margen);
             if (ocupada) { continue; }
             const v2 = valido(cand); if (!v2.ok) { continue; }
             const k = f.getTime() + '|' + pi.clave; if (vistos[k]) { continue; } vistos[k] = true;
-            let pts = 100 - Math.min(35, Math.abs(t - original) / 15 * 1.5) - (d.toDateString() === base.toDateString() ? 0 : 40) - (prefs.indexOf(clave) >= 0 ? 0 : 15) - (fr.tipo === 'oficial' || fr.tipo === 'n/a' ? 0 : 20) - (v2.oca ? 10 : 0);
+            let pts = 100 - Math.min(35, Math.abs(t - original) / 15 * 1.5) - (d.toDateString() === base.toDateString() ? 0 : 40) - (prefs.indexOf(clave) >= 0 ? 0 : 15) - (fr.pref === false ? 15 : 0) - (v2.oca ? 10 : 0);
             pts = Math.round(pts);
             out.push({ fecha: f, pista: pi.clave, tipoFranja: fr.tipo, puntos: pts,
-              nota: (prefs.indexOf(clave) >= 0 ? 'Pista habitual' : 'Pista alternativa') + (fr.tipo === 'conformidad' ? ' · requiere conformidad del rival' : fr.tipo === 'condicion' ? ' · franja condicionada' : '') + (v2.oca ? ' · coincide con convocatorias ocasionales' : '') });
+              nota: (prefs.indexOf(clave) >= 0 ? 'Pista habitual' : 'Pista alternativa') + (fr.pref === false ? ' · franja secundaria' : '') + (v2.oca ? ' · coincide con convocatorias ocasionales' : '') });
           }
         });
       });
     } else {
+      const habit = franjasDelDia(p, d.getDay(), true);
       franjasDelDia(p, d.getDay()).forEach((t: number) => {
         const f = new Date(d.getFullYear(), d.getMonth(), d.getDate(), Math.floor(t / 60), t % 60);
         const k = String(f.getTime()); if (vistos[k] || f.getTime() === p.fecha.getTime()) { return; } vistos[k] = true;
         const cand: IPartido = { ...p, fecha: f };
         const v2 = valido(cand); if (!v2.ok) { return; }
-        out.push({ fecha: f, pista: '', tipoFranja: 'oficial', puntos: Math.round(100 - Math.min(35, Math.abs(t - original) / 15 * 1.5) - (d.toDateString() === base.toDateString() ? 0 : 40) - (v2.oca ? 10 : 0)),
-          nota: 'Hora oficial de la franja' + (v2.oca ? ' · coincide con convocatorias ocasionales' : '') + ' · a pedir al club local' });
+        const sec = habit.indexOf(t) < 0;
+        out.push({ fecha: f, pista: '', tipoFranja: sec ? 'secundaria' : 'oficial', puntos: Math.round(100 - Math.min(35, Math.abs(t - original) / 15 * 1.5) - (d.toDateString() === base.toDateString() ? 0 : 40) - (sec ? 15 : 0) - (v2.oca ? 10 : 0)),
+          nota: (sec ? 'Franja secundaria' : 'Hora oficial de la franja') + (v2.oca ? ' · coincide con convocatorias ocasionales' : '') + ' · a pedir al club local' });
       });
     }
   });
@@ -269,7 +283,7 @@ export function asignarPistas(semana: IPartido[], pistas: IPista[], margen: numb
     const inst = norm(p.lugar);
     const cands = pr.pref.concat(pr.alt).map((c: string) => pistas.filter((k: IPista) => norm(k.clave) === norm(c))[0]).filter((k: IPista | undefined) => !!k) as IPista[];
     const mismos = pistas.filter((k: IPista) => norm(k.alias) === inst || norm(k.inst) === inst);
-    const lista = cands.filter((k: IPista) => norm(k.inst) === inst || norm(k.alias) === inst).concat(mismos.filter((k: IPista) => cands.indexOf(k) < 0));
+    const lista = cands.filter((k: IPista) => norm(k.inst) === inst || norm(k.alias) === inst).concat(mismos.filter((k: IPista) => cands.indexOf(k) < 0)).filter((k: IPista) => puedeUsar(p, k));
     const libre = (k: IPista): boolean => !casa.some((q: IPartido) => q.id !== p.id && res[q.id] === k.clave && q.fecha.toDateString() === p.fecha.toDateString() && s < minDia(q.fecha) + q.dur + margen && minDia(q.fecha) < s + p.dur + margen);
     const enReserva = (k: IPista): boolean => k.disp.some((v: IVentana) => v.dia === p.fecha.getDay() && s >= v.desde && s + p.dur <= v.hasta);
     const elegida = lista.filter((k: IPista) => libre(k) && enReserva(k))[0] || lista.filter(libre)[0] || lista[0];
@@ -298,8 +312,8 @@ export function enPlazo(p: IPartido, pl?: IPlazo, ahora?: Date): boolean { retur
    Motor de escenarios: resuelve la semana completa a la vez
    ===================================================================== */
 export interface IPeticion { fecha: Date; nota: string; de: string; }
-export interface ICand { fecha: Date; lugar: string; pista: string; tipoFranja: string; }
-export interface ICambio { id: number; desde: Date; hasta: Date; lugar: string; pista: string; pideRival: boolean; enPlazo: boolean; cambiaDia: boolean; peticion: boolean; tipoFranja: string; }
+export interface ICand { fecha: Date; lugar: string; pista: string; tipoFranja: string; pdm?: boolean; }
+export interface ICambio { id: number; desde: Date; hasta: Date; lugar: string; pista: string; pideRival: boolean; enPlazo: boolean; cambiaDia: boolean; peticion: boolean; tipoFranja: string; pdm: boolean; }
 export interface IEscenario { clave: string; nombre: string; desc: string; cambios: ICambio[]; alertas: IAlerta[]; criticas: number; avisos: number; holguraMin: number; coste: number; partidos: IPartido[]; }
 export interface IResolverOpts {
   reglas: IRegla[]; pistas: IPista[]; margen: number; jugs: IJugV[];
@@ -337,22 +351,37 @@ function candidatos(p: IPartido, pistas: IPista[], pref: string[], alt: string[]
   dias.forEach((d: Date) => {
     if (p.local) {
       const claves = pref.concat(alt.filter((a: string) => pref.indexOf(a) < 0));
+      // 1) Módulos reservados de sus pistas habituales y alternativas, solo en franja oficial
       claves.forEach((clave: string) => {
-        const pi = pistas.filter((k: IPista) => norm(k.clave) === norm(clave))[0]; if (!pi) { return; }
+        const pi = pistas.filter((k: IPista) => norm(k.clave) === norm(clave))[0]; if (!pi || !puedeUsar(p, pi)) { return; }
         pi.disp.filter((v: IVentana) => v.dia === d.getDay()).forEach((v: IVentana) => {
-          for (let t = v.desde; t + p.dur <= v.hasta; t += 30) {
+          for (let t = v.desde; t + p.dur <= v.hasta; t += 15) {
             const f = new Date(d.getFullYear(), d.getMonth(), d.getDate(), Math.floor(t / 60), t % 60);
-            const tf = franjaDe({ ...p, fecha: f }).tipo; if (tf === 'fuera') { continue; }
+            const fr = franjaDe({ ...p, fecha: f }); if (fr.tipo !== 'oficial') { continue; }
             const k = f.getTime() + '|' + norm(pi.inst); if (visto[k]) { continue; } visto[k] = true;
-            out.push({ fecha: f, lugar: pi.alias, pista: pi.clave, tipoFranja: tf });
+            out.push({ fecha: f, lugar: pi.alias, pista: pi.clave, tipoFranja: fr.pref === false ? 'secundaria' : 'oficial' });
           }
         });
       });
+      // 2) Último recurso: pedir al PDM un módulo en sus instalaciones a una hora de franja (fuera de la reserva del club), el mismo día
+      if (d.toDateString() === base.toDateString()) {
+        const insts: { [k: string]: IPista } = {};
+        pistas.filter((k: IPista) => k.inst && puedeUsar(p, k)).forEach((k: IPista) => { if (!insts[norm(k.inst)]) { insts[norm(k.inst)] = k; } });
+        Object.keys(insts).forEach((ki: string) => {
+          const k0 = insts[ki];
+          franjasDelDia(p, d.getDay(), true).forEach((t: number) => {
+            const f = new Date(d.getFullYear(), d.getMonth(), d.getDate(), Math.floor(t / 60), t % 60);
+            const kk = f.getTime() + '|' + ki; if (visto[kk]) { return; } visto[kk] = true;
+            out.push({ fecha: f, lugar: k0.alias, pista: '', tipoFranja: 'oficial', pdm: true });
+          });
+        });
+      }
     } else {
-      franjasDelDia(p, d.getDay()).filter((t: number) => t % 30 === 0).forEach((t: number) => {
+      const pref = franjasDelDia(p, d.getDay(), true);
+      franjasDelDia(p, d.getDay()).forEach((t: number) => {
         const f = new Date(d.getFullYear(), d.getMonth(), d.getDate(), Math.floor(t / 60), t % 60);
         const k = String(f.getTime()); if (visto[k]) { return; } visto[k] = true;
-        out.push({ fecha: f, lugar: p.lugar, pista: '', tipoFranja: 'oficial' });
+        out.push({ fecha: f, lugar: p.lugar, pista: '', tipoFranja: pref.indexOf(t) >= 0 ? 'oficial' : 'secundaria' });
       });
     }
   });
@@ -404,6 +433,7 @@ export function resolver(semana: IPartido[], o: IResolverOpts): IEscenario[] {
         if (p.fecha.getTime() === p0.fecha.getTime() && norm(p.lugar) === norm(p0.lugar)) { return; }
         if (o.forzados[p.id]) { return; }
         let w = p.local ? (enPlazo(p0, o.plazo, ahora) ? 1 : 2.5) : 4;
+        const ca = asig[p.id]; if (ca && ca.pdm) { w += 6; } if (ca && ca.tipoFranja === 'secundaria') { w += 3; }
         if (p.fecha.toDateString() !== p0.fecha.toDateString()) { w += 2; }
         w += Math.abs(p.fecha.getTime() - p0.fecha.getTime()) / 3600000 / 4;
         if (pe && p.fecha.getTime() === pe.fecha.getTime()) { w -= 0.8; }
@@ -450,7 +480,7 @@ export function resolver(semana: IPartido[], o: IResolverOpts): IEscenario[] {
     const alertas = analizar(final, o.reglas, o.pistas, o.margen, o.jugs);
     const cambios: ICambio[] = final.filter((p: IPartido) => { const p0 = orig[p.id]; return p.fecha.getTime() !== p0.fecha.getTime() || norm(p.lugar) !== norm(p0.lugar); }).map((p: IPartido): ICambio => {
       const p0 = orig[p.id]; const c = mejor.asig[p.id]; const pe = o.peticiones[p.id];
-      return { id: p.id, desde: p0.fecha, hasta: p.fecha, lugar: p.lugar, pista: c.pista, pideRival: !p.local || !enPlazo(p0, o.plazo, ahora) || c.tipoFranja === 'conformidad' || c.tipoFranja === 'condicion',
+      return { id: p.id, desde: p0.fecha, hasta: p.fecha, lugar: p.lugar, pista: c.pista, pideRival: !p.local || !enPlazo(p0, o.plazo, ahora) || c.tipoFranja === 'conformidad' || c.tipoFranja === 'condicion', pdm: !!c.pdm,
         enPlazo: enPlazo(p0, o.plazo, ahora), cambiaDia: p.fecha.toDateString() !== p0.fecha.toDateString(), peticion: !!pe && pe.fecha.getTime() === p.fecha.getTime(), tipoFranja: c.tipoFranja };
     }).sort((a: ICambio, b: ICambio) => a.hasta.getTime() - b.hasta.getTime());
     return { clave: esc.clave, nombre: esc.nombre, desc: esc.desc, cambios, alertas, criticas: mejor.r.crit, avisos: mejor.r.av, holguraMin: mejor.r.minHol === 9999 ? -1 : Math.round(mejor.r.minHol), coste: mejor.r.coste,

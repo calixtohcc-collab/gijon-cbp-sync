@@ -1,5 +1,5 @@
 import { esc } from '../../common/cbp';
-import { aviso } from '../../common/ui';
+import { aviso, abrirModal, cerrarModal } from '../../common/ui';
 import { IPartido, IAlerta, IPista, ICand, IEscenario, IResolverOpts, IPeticion, IHueco, resolver, sugerir, enPlazo, norm, minDia, hm, DIA_TXT } from './motor';
 import { IGCtx, IPartidoG, esFijo, guardarGest, justificacion, fTxt } from './gestion';
 
@@ -61,6 +61,8 @@ export function vEscenarios(ctx: IGCtx, est: IEscEstado, alActual: IAlerta[]): s
       if (c.cambiaDia) { etiquetas.push('<span class="cbp-plazo">Cambia de día</span>'); }
       if (c.tipoFranja === 'conformidad' || c.tipoFranja === 'condicion') { etiquetas.push('<span class="cbp-plazo">Franja con conformidad</span>'); }
       if (c.peticion) { etiquetas.push('<span class="cbp-plazo ok">Atiende la petición del entrenador</span>'); }
+      if (c.pdm) { etiquetas.push('<span class="cbp-plazo" style="background:#FFF1D6;color:#8A5300">Pedir pista al PDM</span>'); }
+      if (c.tipoFranja === 'secundaria') { etiquetas.push('<span class="cbp-plazo">Franja secundaria</span>'); }
       return '<tr' + (f ? ' class="fij"' : '') + '><td><b>' + esc(p.equipo) + '</b><br><small style="color:#5c5c5c">' + (p.local ? 'vs ' : 'en ') + esc(p.rival) + '</small></td>' +
         '<td><s style="color:#5c5c5c">' + esc(fTxt(c.desde)) + '</s></td><td><b>' + esc(fTxt(c.hasta)) + '</b>' + (pista ? '<br><small>' + esc(pista.inst + (pista.modulo ? ' ' + pista.modulo : '')) + '</small>' : '') + '</td>' +
         '<td><div style="display:flex;gap:4px;flex-wrap:wrap">' + etiquetas.join('') + '</div></td>' +
@@ -72,7 +74,8 @@ export function vEscenarios(ctx: IGCtx, est: IEscEstado, alActual: IAlerta[]): s
       return '<span class="cbp-ajuste">' + esc(p.equipo) + ': ' + (igual ? 'no se mueve' : esc(fTxt(f.fecha))) + '<button type="button" data-esc-sol="' + p.id + '" aria-label="Quitar ajuste">✕</button></span>'; }).join('');
     cuerpo = '<p class="cbp-nota" style="margin:0"><b>' + esc(e.nombre) + ':</b> ' + esc(e.desc) + '</p>' +
       (ajustes ? '<div class="cbp-ajustes"><b>Tus ajustes' + (est.pendiente ? ' (sin aplicar)' : '') + ':</b> ' + ajustes + '</div>' : '') +
-      (quedan.length ? '<div class="cbp-odd" style="margin:0;background:#FFF6F6"><b>Quedan ' + quedan.length + ' conflicto' + (quedan.length === 1 ? '' : 's') + ' sin resolver:</b>\n' + quedan.map((a: IAlerta) => '• ' + esc(a.titulo) + ' — ' + esc(a.accion)).join('\n') + '</div>' : '') +
+      (quedan.length ? '<div class="cbp-odd" style="margin:0;background:#FFF6F6"><b>Quedan ' + quedan.length + ' conflicto' + (quedan.length === 1 ? '' : 's') + ' sin resolver:</b>\n' + quedan.map((a: IAlerta) => '• ' + esc(a.titulo) + ' — ' + esc(a.accion)).join('\n') +
+        '\n\n<b>Sin hueco en franja oficial con las pistas del club.</b> Salidas: pedir al PDM un módulo a la hora que haga falta, revisar las propuestas o candados de la tabla, o solicitar aplazamiento a la FBPA.</div>' : '') +
       (e.cambios.length ? '<div class="cbp-scroll"><table class="cbp-tabla pt"><thead><tr><th>Partido</th><th>FBPA</th><th>Propuesta</th><th>Qué implica</th><th></th></tr></thead><tbody>' + filas + '</tbody></table></div>'
         : '<div class="cbp-vacio">Este escenario no mueve ningún partido.</div>') +
       '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
@@ -130,17 +133,20 @@ export function enlazarEscenarios(root: HTMLElement, ctx: IGCtx, est: IEscEstado
   }));
   q('[data-esc-guardar]').forEach((b: HTMLElement) => b.addEventListener('click', () => {
     const e = escSel(); if (!e) { return; }
-    if (!window.confirm('Se guardarán ' + e.cambios.length + ' cambios como propuesta. ¿Seguir?')) { return; }
-    (b as HTMLButtonElement).disabled = true;
+    const caja = abrirModal('Guardar escenario «' + e.nombre + '»', '<p style="margin:0">Se guardarán <b>' + e.cambios.length + ' cambio' + (e.cambios.length === 1 ? '' : 's') + '</b> como propuesta en la tabla de partidos.' + (e.cambios.some((c) => c.pdm) ? ' Los marcados «Pedir pista al PDM» necesitan que el Patronato conceda el módulo.' : '') + '</p><div class="cbp-btns"><button type="button" class="cbp-btn" data-c="1">Cancelar</button><button type="button" class="cbp-btn pri" data-si="1">Guardar propuestas</button></div>', 520);
+    (caja.querySelector('[data-c]') as HTMLElement).addEventListener('click', cerrarModal);
+    (caja.querySelector('[data-si]') as HTMLElement).addEventListener('click', (ev: Event) => { (ev.currentTarget as HTMLButtonElement).disabled = true; guardar(e); });
+  }));
+  const guardar = (e: IEscenario): void => {
     e.cambios.reduce((pr: Promise<void>, c) => pr.then(() => {
       const p = pid(c.id);
       const body: { [k: string]: any } = { FechaPropuesta: c.hasta.toISOString(), EstadoG: 'Propuesto', Motivo: justificacion(p, al) || 'Ajuste de horarios de la semana para evitar coincidencias.', OKEntrenador: '' }; // eslint-disable-line @typescript-eslint/no-explicit-any
       if (c.pista) { body.Pista = c.pista; }
       if (c.peticion) { body.PeticionHora = null; }
-      return guardarGest(ctx, p, body, 'Escenario «' + e.nombre + '»: ' + fTxt(c.hasta) + (p.local && enPlazo({ ...p, fecha: p.oficial }, ctx.plazo) ? ' (en plazo)' : ''));
-    }), Promise.resolve()).then(() => { est.res = null; est.forzados = {}; est.sel = ''; aviso('Escenario guardado: ' + e.cambios.length + ' propuestas pendientes del OK'); ctx.recargar(); })
-      .catch((x: Error) => { (b as HTMLButtonElement).disabled = false; aviso('Error: ' + x.message, true); });
-  }));
+      return guardarGest(ctx, p, body, 'Escenario «' + e.nombre + '»: ' + fTxt(c.hasta) + (c.pdm ? ' (pista a pedir al PDM)' : '') + (p.local && enPlazo({ ...p, fecha: p.oficial }, ctx.plazo) ? ' (en plazo)' : ''));
+    }), Promise.resolve()).then(() => { cerrarModal(); est.res = null; est.forzados = {}; est.sel = ''; aviso('Escenario guardado: ' + e.cambios.length + ' propuestas en la tabla, pendientes del OK'); ctx.recargar(); })
+      .catch((x: Error) => { cerrarModal(); aviso('Error al guardar: ' + x.message, true); });
+  };
 }
 
 export const CSS_ESC = `

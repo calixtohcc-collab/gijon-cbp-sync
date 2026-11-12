@@ -157,8 +157,11 @@ export function enlazarGestion(root: HTMLElement, ctx: IGCtx, al: IAlerta[]): vo
     else if (k === 'validartodo') {
       const ps = ctx.semana.filter((p: IPartidoG) => ctx.gest[p.id] && ctx.gest[p.id].estado === 'Propuesto');
       const sinOk = ps.filter((p: IPartidoG) => !ctx.gest[p.id].ok).length;
-      if (!window.confirm('Validar ' + ps.length + ' propuesta' + (ps.length === 1 ? '' : 's') + (sinOk ? ' (' + sinOk + ' sin OK del entrenador)' : '') + '?')) { return; }
-      ps.reduce((pr: Promise<void>, p: IPartidoG) => pr.then(() => guardarGest(ctx, p, { EstadoG: 'Validado' }, 'Validado')), Promise.resolve()).then(() => { aviso(ps.length + ' propuestas validadas'); ctx.recargar(); }).catch((x: Error) => aviso('Error: ' + x.message, true));
+      const caja = abrirModal('Validar propuestas', '<p style="margin:0">Se validarán <b>' + ps.length + ' propuesta' + (ps.length === 1 ? '' : 's') + '</b>' + (sinOk ? ', ' + sinOk + ' todavía sin el OK del entrenador' : '') + '.</p><div class="cbp-btns"><button type="button" class="cbp-btn" data-c="1">Cancelar</button><button type="button" class="cbp-btn pri" data-si="1">Validar</button></div>', 480);
+      (caja.querySelector('[data-c]') as HTMLElement).addEventListener('click', cerrarModal);
+      (caja.querySelector('[data-si]') as HTMLElement).addEventListener('click', () => {
+        ps.reduce((pr: Promise<void>, p: IPartidoG) => pr.then(() => guardarGest(ctx, p, { EstadoG: 'Validado' }, 'Validado')), Promise.resolve()).then(() => { cerrarModal(); aviso(ps.length + ' propuestas validadas'); ctx.recargar(); }).catch((x: Error) => aviso('Error: ' + x.message, true));
+      });
     }
   }));
   root.querySelectorAll('[data-sol]').forEach((b: Element) => b.addEventListener('click', (ev: Event) => {

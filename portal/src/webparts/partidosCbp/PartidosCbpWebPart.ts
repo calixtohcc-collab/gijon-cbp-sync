@@ -7,7 +7,7 @@ import { cargarEstilos3 } from '../../common/estilos3';
 import { cargarEstilos4 } from '../../common/estilos4';
 import { porTitulo, getJ, formModal } from '../../common/sp2';
 import { IPartidoG, IGest, IClub, IGCtx, cargarGestion, cargarClubes, esCoordinador, guardarGest, vPartidos, enlazarGestion, vClubes, enlazarClubes } from './gestion';
-import { IPartido, IRegla, IPista, IAlerta, IJugV, IPlazo, analizar, leerDisponibilidad, instalacionDe, minDia, hm, durTxt, DIA_TXT, FRANJAS, PLAZO_DEF } from './motor';
+import { IPartido, IRegla, IPista, IAlerta, IJugV, IPlazo, cargarFranjas, analizar, leerDisponibilidad, instalacionDe, minDia, hm, durTxt, DIA_TXT, PLAZO_DEF } from './motor';
 import { IEscEstado, nuevoEstado, vEscenarios, enlazarEscenarios, vista, CSS_ESC } from './escenarios';
 
 export interface IPartidosCbpWebPartProps { titulo: string; margen: number; plazoDia: string; plazoHora: string; }
@@ -15,7 +15,9 @@ const DIAS_PLAZO = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viern
 
 interface IEq { id: number; nombre: string; codigo: string; franja: string; dur: number; pref: string; alt: string; catPDM: string; }
 type Tab = 'semana' | 'temporada' | 'clubes' | 'reglas';
-const L = { reglas: 'Partidos · Conflictos', pistas: 'Partidos · Pistas' };
+const L = { reglas: 'Partidos · Conflictos', pistas: 'Partidos · Pistas', franjas: 'Partidos · Franjas' };
+const DIAS_CORTOS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
+interface IFranjaRow { id: number; grupo: string; dias: string; desde: string; hasta: string; tipo: string; cond: string; habitual: boolean; }
 const COND = ['Cualquiera', 'Local', 'Visitante'];
 const MOTIVOS = ['Entrenador', 'Jugadores', 'Otro'];
 const GRUPOS = ['Júnior y sénior', 'Minibasket', 'Cadete e infantil 1ª', 'Resto de categorías', 'Nacional', 'Sin franja'];
@@ -80,6 +82,7 @@ export default class PartidosCbpWebPart extends BaseClientSideWebPart<IPartidosC
   private jugs: IJugV[] = [];
   private est: IEscEstado = nuevoEstado();
   private alAbiertas: boolean = false;
+  private franjas: IFranjaRow[] = [];
 
   protected onInit(): Promise<void> {
     cargarEstilos(); cargarEstilosUi(); cargarEstilos3(); cargarEstilos4();
@@ -100,13 +103,17 @@ export default class PartidosCbpWebPart extends BaseClientSideWebPart<IPartidosC
       cargarEventos(c, w),
       getJ(c, porTitulo(w, 'Equipos') + '/items?$select=Id,Title,Codigo,GrupoFranja,Duracion,PistasPref,PistasAlt,CategoriaPDM&$top=200'),
       getJ(c, porTitulo(w, L.reglas) + '/items?$select=Id,Title,EquipoA,CondA,EquipoB,CondB,Minutos,Motivo&$top=500'),
-      getJ(c, porTitulo(w, L.pistas) + '/items?$select=Id,Title,Instalacion,Modulo,AliasFBPA,Disponibilidad,Controlar,Orden,NombrePDM&$orderby=Orden&$top=200'),
+      getJ(c, porTitulo(w, L.pistas) + '/items?$select=Id,Title,Instalacion,Modulo,AliasFBPA,Disponibilidad,Controlar,Orden,NombrePDM,Permitidos&$orderby=Orden&$top=200'),
       getJ(c, porTitulo(w, 'Jugadores') + '/items?$select=Title,EquipoJ,Activo,EquiposHabitual,EquiposOcasional&$top=3000').catch(() => ({ value: [] })),
-      cargarGestion(c, w), cargarClubes(c, w), esCoordinador(c, w)
+      cargarGestion(c, w), cargarClubes(c, w), esCoordinador(c, w),
+      getJ(c, porTitulo(w, L.franjas) + '/items?$select=Id,Title,Dias,Desde,Hasta,TipoF,Condicion,Habitual&$top=500').catch(() => ({ value: [] }))
     ]).then((r: any[]) => { // eslint-disable-line @typescript-eslint/no-explicit-any
+      this.franjas = (r[8].value || []).map((i: any): IFranjaRow => ({ id: i.Id, grupo: i.Title || '', dias: i.Dias || '', desde: i.Desde || '', hasta: i.Hasta || '', tipo: i.TipoF || 'oficial', cond: i.Condicion || '', habitual: i.Habitual !== false })); // eslint-disable-line @typescript-eslint/no-explicit-any
+      cargarFranjas(this.franjas.filter((x: IFranjaRow) => /^\d{1,2}:\d{2}$/.test(x.desde) && /^\d{1,2}:\d{2}$/.test(x.hasta)).map((x: IFranjaRow) => ({ grupo: x.grupo, f: { id: x.id, dias: x.dias.toLowerCase().split(/[,\s/]+/).map((d: string) => DIAS_CORTOS.indexOf(d.slice(0, 3).replace('mie', 'mié').replace('sab', 'sáb'))).filter((n: number) => n >= 0),
+        desde: ('0' + x.desde).slice(-5), hasta: ('0' + x.hasta).slice(-5), tipo: (x.tipo as 'oficial' | 'conformidad' | 'condicion'), cond: x.cond, pref: x.habitual } })));
       this.eqs = (r[1].value || []).map((i: any): IEq => ({ id: i.Id, nombre: i.Title, codigo: (i.Codigo || '').toUpperCase(), franja: i.GrupoFranja || 'Sin franja', dur: i.Duracion || 90, pref: i.PistasPref || '', alt: i.PistasAlt || '', catPDM: i.CategoriaPDM || '' })); // eslint-disable-line @typescript-eslint/no-explicit-any
       this.reglas = (r[2].value || []).map((i: any): IRegla => ({ id: i.Id, titulo: i.Title || '', a: (i.EquipoA || '').toUpperCase(), condA: i.CondA || 'Cualquiera', b: (i.EquipoB || '').toUpperCase(), condB: i.CondB || 'Cualquiera', min: i.Minutos || 0, motivo: i.Motivo || 'Entrenador' })); // eslint-disable-line @typescript-eslint/no-explicit-any
-      this.pistas = (r[3].value || []).map((i: any): IPista => ({ id: i.Id, clave: i.Title, inst: i.Instalacion || i.Title, modulo: i.Modulo || '', alias: i.AliasFBPA || i.Instalacion || '', disp: leerDisponibilidad(i.Disponibilidad || ''), dispTexto: i.Disponibilidad || '', controlar: i.Controlar !== false, orden: i.Orden || 0, pdm: i.NombrePDM || '' })); // eslint-disable-line @typescript-eslint/no-explicit-any
+      this.pistas = (r[3].value || []).map((i: any): IPista => ({ id: i.Id, clave: i.Title, inst: i.Instalacion || i.Title, modulo: i.Modulo || '', alias: i.AliasFBPA || i.Instalacion || '', disp: leerDisponibilidad(i.Disponibilidad || ''), dispTexto: i.Disponibilidad || '', permitidos: (i.Permitidos || '').split(/\n/).map((x: string) => x.trim()).filter((x: string) => x), controlar: i.Controlar !== false, orden: i.Orden || 0, pdm: i.NombrePDM || '' })); // eslint-disable-line @typescript-eslint/no-explicit-any
       this.jugs = (r[4].value || []).filter((i: any) => i.Activo !== false && ((i.EquiposHabitual || []).length || (i.EquiposOcasional || []).length)) // eslint-disable-line @typescript-eslint/no-explicit-any
         .map((i: any): IJugV => ({ nombre: i.Title || '', equipo: i.EquipoJ || '', habitual: i.EquiposHabitual || [], ocasional: i.EquiposOcasional || [] })); // eslint-disable-line @typescript-eslint/no-explicit-any
       const porNombre: { [k: string]: IEq } = {}; this.eqs.forEach((e: IEq) => { porNombre[e.nombre] = e; });
@@ -241,16 +248,20 @@ export default class PartidosCbpWebPart extends BaseClientSideWebPart<IPartidosC
       '</tbody></table></div></section>';
     const tPistas = '<section class="cbp-box"><div class="cbp-box-h"><h3>Pistas y reservas</h3><button type="button" class="cbp-btn sm" data-pnew="1">+ Añadir pista</button></div>' +
       '<p class="cbp-nota" style="margin:0">Módulos que el club tiene reservados cada fin de semana. Los partidos en casa se cuentan contra estos módulos.</p>' +
-      '<div class="cbp-scroll"><table class="cbp-tabla pt"><thead><tr><th>Instalación</th><th>Módulo</th><th>Reserva</th><th>Control</th></tr></thead><tbody>' +
-      this.pistas.map((p: IPista) => '<tr class="clic" data-ped="' + p.id + '"><td><b>' + esc(p.inst) + '</b></td><td>' + esc(p.modulo) + '</td><td style="white-space:pre-line">' + esc(p.dispTexto || '—') + '</td><td>' + (p.controlar ? 'Sí' : 'No') + '</td></tr>').join('') +
+      '<div class="cbp-scroll"><table class="cbp-tabla pt"><thead><tr><th>Instalación</th><th>Módulo</th><th>Reserva</th><th>Solo para</th></tr></thead><tbody>' +
+      this.pistas.map((p: IPista) => '<tr class="clic" data-ped="' + p.id + '"><td><b>' + esc(p.inst) + '</b></td><td>' + esc(p.modulo) + '</td><td style="white-space:pre-line">' + esc(p.dispTexto || '—') + '</td><td>' + esc((p.permitidos || []).join(', ') || 'Todos') + '</td></tr>').join('') +
       '</tbody></table></div></section>';
     const tEq = '<section class="cbp-box"><div class="cbp-box-h"><h3>Equipos</h3></div><p class="cbp-nota" style="margin:0">Código, franja horaria de la FBPA y duración estimada de cada partido (para calcular la ocupación de pista).</p>' +
       '<div class="cbp-scroll"><table class="cbp-tabla pt"><thead><tr><th>Código</th><th>Equipo</th><th>Franja FBPA</th><th>Duración</th><th>Pistas preferentes</th></tr></thead><tbody>' +
       this.eqs.filter((e: IEq) => e.codigo).sort((a: IEq, b: IEq) => a.codigo.localeCompare(b.codigo)).map((e: IEq) => '<tr class="clic" data-eed="' + e.id + '"><td><b>' + esc(e.codigo) + '</b></td><td>' + esc(e.nombre) + '</td><td>' + esc(e.franja) + '</td><td>' + e.dur + ' min</td><td style="white-space:pre-line">' + esc(e.pref) + '</td></tr>').join('') +
       '</tbody></table></div></section>';
-    const fr = '<section class="cbp-box"><div class="cbp-box-h"><h3>Franjas FBPA 2026/27</h3></div><p class="cbp-nota" style="margin:0">Horas de inicio oficiales por grupo (texto de bandas facilitado por el club). La Sénior Femenina A es competición nacional y no se valida aquí.</p><div class="cbp-scroll"><table class="cbp-tabla pt"><thead><tr><th>Grupo</th><th>Oficial</th><th>Con conformidad o condición</th></tr></thead><tbody>' +
-      Object.keys(FRANJAS).map((g: string) => { const t = (tp: string[]): string => FRANJAS[g].filter((f: { tipo: string }) => tp.indexOf(f.tipo) >= 0).map((f: { dias: number[]; desde: string; hasta: string }) => f.dias.map((x: number) => DIA_TXT[x].slice(0, 3)).join('/') + ' ' + (f.desde === f.hasta ? f.desde : f.desde + '–' + f.hasta)).join(' · ');
-        return '<tr><td><b>' + esc(g) + '</b></td><td>' + t(['oficial']) + '</td><td>' + t(['conformidad', 'condicion']) + '</td></tr>'; }).join('') + '</tbody></table></div></section>';
+    const grupos: string[] = []; this.franjas.forEach((x: IFranjaRow) => { if (grupos.indexOf(x.grupo) < 0) { grupos.push(x.grupo); } });
+    const fr = '<section class="cbp-box"><div class="cbp-box-h"><h3>Franjas FBPA</h3>' + (this.esCoord ? '<button type="button" class="cbp-btn sm" data-fnew="1">+ Añadir franja</button>' : '') + '</div>' +
+      '<p class="cbp-nota" style="margin:0">Horas de inicio por grupo de equipos. El motor de partidos solo propone horas de franjas <b>oficiales</b>, y empieza por las <b>habituales</b>; las secundarias solo si no hay otra salida. Pulsa una fila para cambiarla. Los equipos sin grupo (p. ej. Sénior Femenino A, competición nacional) no los mueve el motor.</p>' +
+      '<div class="cbp-scroll"><table class="cbp-tabla pt"><thead><tr><th>Grupo</th><th>Días</th><th>Horas de inicio</th><th>Tipo</th><th>Uso</th></tr></thead><tbody>' +
+      grupos.map((g: string) => this.franjas.filter((x: IFranjaRow) => x.grupo === g).map((x: IFranjaRow, i: number) => '<tr class="clic" data-fed="' + x.id + '"><td>' + (i === 0 ? '<b>' + esc(g) + '</b>' : '') + '</td><td>' + esc(x.dias) + '</td><td>' + esc(x.desde === x.hasta ? x.desde : x.desde + '–' + x.hasta) + '</td><td>' +
+        (x.tipo === 'oficial' ? 'Oficial' : x.tipo === 'conformidad' ? 'Con conformidad del rival' : 'Condicionada') + (x.cond ? '<br><small>' + esc(x.cond) + '</small>' : '') + '</td><td>' + (x.tipo !== 'oficial' ? '—' : x.habitual ? '<span class="cbp-plazo ok">Habitual</span>' : '<span class="cbp-plazo">Secundaria</span>') + '</td></tr>').join('')).join('') +
+      '</tbody></table></div></section>';
     const pl = this.plazo;
     const tPlazo = '<section class="cbp-box"><div class="cbp-box-h"><h3>Plazo ordinario y normativa</h3></div>' +
       '<p class="cbp-nota" style="margin:0">El equipo local puede fijar o ajustar la hora de sus partidos sin notificar al rival hasta el <b>' + DIAS_PLAZO[pl.dia] + ' a las ' + hm(pl.hora) + ' de la semana anterior</b> al partido. Pasado ese plazo, el cambio necesita la conformidad del rival. El plazo se cambia en la configuración de esta sección.</p>' +
@@ -296,14 +307,34 @@ export default class PartidosCbpWebPart extends BaseClientSideWebPart<IPartidosC
         { n: 'Instalacion', label: 'Instalación', req: true, valor: p ? p.inst : '', ph: 'Como aparece en la FBPA' },
         { n: 'Modulo', label: 'Módulo', valor: p ? p.modulo : '', ph: 'M1, M2, Central…' },
         { n: 'Disponibilidad', label: 'Reserva', tipo: 'area', valor: p ? p.dispTexto : '', ayuda: '(una línea por franja: «Sábado 09:00-14:00»)' },
+        { n: 'Permitidos', label: 'Solo para estos equipos', tipo: 'area', valor: p ? (p.permitidos || []).join('\n') : '', ayuda: '(una línea por categoría, equipo o código: «Junior», «Sénior», «SFA». Vacío = todos)' },
         { n: 'Controlar', label: 'Controlar capacidad', tipo: 'check', valor: p ? p.controlar : true }
       ], 'Guardar', (v: { [k: string]: any }) => { // eslint-disable-line @typescript-eslint/no-explicit-any
-        const body = { Title: v.Instalacion + (v.Modulo ? ' · ' + v.Modulo : ''), Instalacion: v.Instalacion, Modulo: v.Modulo, AliasFBPA: v.Instalacion, Disponibilidad: v.Disponibilidad, Controlar: v.Controlar, Orden: p ? p.orden : this.pistas.length + 1 };
+        const body = { Title: v.Instalacion + (v.Modulo ? ' · ' + v.Modulo : ''), Instalacion: v.Instalacion, Modulo: v.Modulo, AliasFBPA: v.Instalacion, Disponibilidad: v.Disponibilidad, Controlar: v.Controlar, Permitidos: v.Permitidos, Orden: p ? p.orden : this.pistas.length + 1 };
         return spPost(c, porTitulo(w, L.pistas) + '/items' + (p ? '(' + p.id + ')' : ''), body, !!p).then(() => { aviso('Pista guardada'); recargar(); });
       }, 520);
     };
     q('[data-pnew]').forEach((b: HTMLElement) => b.addEventListener('click', () => formPista()));
     q('[data-ped]').forEach((b: HTMLElement) => b.addEventListener('click', () => formPista(this.pistas.filter((p: IPista) => p.id === +(b.getAttribute('data-ped') || 0))[0])));
+    const formFranja = (x?: IFranjaRow): void => {
+      if (!this.esCoord) { return; }
+      const gr: string[] = GRUPOS.filter((g: string) => g !== 'Nacional' && g !== 'Sin franja');
+      formModal(x ? 'Editar franja' : 'Nueva franja', [
+        { n: 'Title', label: 'Grupo', tipo: 'select', opciones: gr, valor: x ? x.grupo : gr[0] },
+        { n: 'Dias', label: 'Días', req: true, valor: x ? x.dias : 'sáb', ph: 'sáb · dom · mié, jue, vie' },
+        { n: 'Desde', label: 'Primera hora de inicio', req: true, valor: x ? x.desde : '09:30', ph: '09:30' }, { n: 'Hasta', label: 'Última hora de inicio', req: true, valor: x ? x.hasta : '12:30', ph: '12:30' },
+        { n: 'TipoF', label: 'Tipo', tipo: 'select', opciones: ['oficial', 'conformidad', 'condicion'], valor: x ? x.tipo : 'oficial' },
+        { n: 'Habitual', label: 'Habitual (el motor la usa primero)', tipo: 'check', valor: x ? x.habitual : true },
+        { n: 'Condicion', label: 'Condición', tipo: 'area', full: true, valor: x ? x.cond : '' }
+      ], 'Guardar', (v: { [k: string]: any }) => { // eslint-disable-line @typescript-eslint/no-explicit-any
+        if (!/^\d{1,2}:\d{2}$/.test(v.Desde) || !/^\d{1,2}:\d{2}$/.test(v.Hasta)) { return Promise.reject(new Error('Horas en formato 09:30')); }
+        return spPost(c, porTitulo(w, L.franjas) + '/items' + (x ? '(' + x.id + ')' : ''), v, !!x).then(() => { aviso('Franja guardada'); recargar(); });
+      }, 560, x ? '<button type="button" class="cbp-btn full" data-del-f="1" style="color:#B00020;border-color:#B00020;justify-self:start">Eliminar franja</button>' : '');
+      const del = document.querySelector('[data-del-f]') as HTMLElement;
+      if (del && x) { del.addEventListener('click', () => { spPost(c, porTitulo(w, L.franjas) + '/items(' + x.id + ')/recycle').then(() => { (document.querySelector('#cbp-modal .cbp-x') as HTMLElement).click(); aviso('Franja eliminada'); recargar(); }); }); }
+    };
+    q('[data-fnew]').forEach((b: HTMLElement) => b.addEventListener('click', () => formFranja()));
+    q('[data-fed]').forEach((b: HTMLElement) => b.addEventListener('click', () => formFranja(this.franjas.filter((x: IFranjaRow) => x.id === +(b.getAttribute('data-fed') || 0))[0])));
 
     q('[data-eed]').forEach((b: HTMLElement) => b.addEventListener('click', () => {
       const e = this.eqs.filter((x: IEq) => x.id === +(b.getAttribute('data-eed') || 0))[0]; if (!e) { return; }
