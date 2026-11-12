@@ -64,6 +64,26 @@
     "archivo": "ics/equipo-de-padres.ics"
   },
   {
+    "equipo": "Escuela Alevín Femenino Pumarín",
+    "archivo": "ics/escuela-alevin-femenino-pumarin.ics"
+  },
+  {
+    "equipo": "Escuela Alevín Femenino Xosefa",
+    "archivo": "ics/escuela-alevin-femenino-xosefa.ics"
+  },
+  {
+    "equipo": "Escuela Alevín Masculino Xosefa",
+    "archivo": "ics/escuela-alevin-masculino-xosefa.ics"
+  },
+  {
+    "equipo": "Escuela Benjamín Femenino Xosefa",
+    "archivo": "ics/escuela-benjamin-femenino-xosefa.ics"
+  },
+  {
+    "equipo": "Escuela Benjamín Masculino El Llano",
+    "archivo": "ics/escuela-benjamin-masculino-el-llano.ics"
+  },
+  {
     "equipo": "Infantil Femenino A",
     "archivo": "ics/infantil-femenino-a.ics"
   },
