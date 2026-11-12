@@ -35,10 +35,12 @@ export default class HerramientasCbpWebPart extends BaseClientSideWebPart<IHerra
   protected onInit(): Promise<void> {
     cargarEstilos(); cargarEstilosUi();
     this.tab = this.properties.inicial || 'convocatorias';
-    const h = window.location.hash.replace('#', '');
+    const h0 = window.location.hash.replace('#', '');
+    const eqh = h0.match(/[&?]eq=([^&]+)/); const h = h0.replace(/[&?]eq=[^&]+/, '');
     const m = h.match(/^(\w+)(?:=(\d+))?$/);
     if (m && TABS.some((t: { k: string }) => t.k === m[1])) { this.tab = m[1]; if (m[1] === 'convocatorias' && m[2]) { preseleccionarPartido(+m[2]); } }
     try { this.equipo = window.localStorage.getItem('cbp-equipo') || ''; } catch (e) { this.equipo = ''; }
+    if (eqh) { this.equipo = decodeURIComponent(eqh[1]); try { window.localStorage.setItem('cbp-equipo', this.equipo); } catch (x) { /* sin almacenamiento */ } }
     const c = this.context.spHttpClient; const w = this.context.pageContext.web.absoluteUrl;
     cargarEstilosJug();
     return Promise.all([cargarEventos(c, w).catch(() => []), cargarJugadores(c, w).catch(() => []), esCoordinacion(c, w)])
@@ -46,8 +48,11 @@ export default class HerramientasCbpWebPart extends BaseClientSideWebPart<IHerra
   }
 
   private ctx(): ICtx {
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    const yo = this;
     return {
-      client: this.context.spHttpClient, w: this.context.pageContext.web.absoluteUrl, eventos: this.eventos, jugadores: this.jugadores, equipo: this.equipo,
+      client: this.context.spHttpClient, w: this.context.pageContext.web.absoluteUrl,
+      get eventos(): IEvento[] { return yo.eventos; }, get jugadores(): IJugador[] { return yo.jugadores; }, get equipo(): string { return yo.equipo; },
       setEquipo: (e: string) => { this.equipo = e; try { window.localStorage.setItem('cbp-equipo', e); } catch (x) { /* sin almacenamiento */ } },
       recargarJugadores: () => cargarJugadores(this.context.spHttpClient, this.context.pageContext.web.absoluteUrl).then((j: IJugador[]) => { this.jugadores = j; }),
       irA: (t: string) => { this.tab = t; this.render(); }

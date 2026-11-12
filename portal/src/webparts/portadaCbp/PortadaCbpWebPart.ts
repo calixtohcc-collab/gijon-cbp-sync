@@ -64,13 +64,16 @@ export default class PortadaCbpWebPart extends BaseClientSideWebPart<IPortadaCbp
       '<div class="cbp-hero-logo"><img src="' + esc(logo) + '" alt="Escudo de Gijón CBP"></div>' +
       '</div></section>';
 
+    // Mismo orden que el menú superior
     const accesos: string[][] = [
       ['calendario', 'Calendario', 'Partidos y eventos', w + '/SitePages/Temporada.aspx'],
-      ['equipos', 'Equipos', 'Horarios y pistas', w + '/SitePages/Equipos.aspx'],
+      ['equipos', 'Equipos', 'Fichas, horarios y pistas', w + '/SitePages/Equipos.aspx'],
+      ['temporada', 'Partidos', 'Horarios, cambios y FBPA', w + '/SitePages/Partidos.aspx'],
+      ['herramientas', 'Herramientas', 'Convocatorias, asistencia…', w + '/SitePages/Herramientas.aspx'],
       ['materiales', 'Materiales', 'Ejercicios y documentos', w + '/SitePages/Materiales.aspx'],
       ['avisos', 'Avisos', 'Comunicados de la junta', w + '/SitePages/Avisos.aspx'],
-      ['herramientas', 'Herramientas', 'Pizarra, convocatorias…', w + '/SitePages/Herramientas.aspx'],
-      ['junta', 'Junta directiva', 'Acceso restringido', w + '/SitePages/Junta.aspx']
+      ['junta', 'Junta directiva', 'Acceso restringido', w + '/SitePages/Junta.aspx'],
+      ['comisiones', 'Comisiones', 'Grupos de trabajo', w + '/SitePages/Comisiones.aspx']
     ];
     const accesosHtml = '<nav class="cbp-accesos" aria-label="Accesos rápidos">' + accesos.map((a: string[]) =>
       '<a class="cbp-acceso" href="' + esc(a[3]) + '"><span class="cbp-acceso-ico">' + icon(a[0], 22) + '</span><span><b>' + a[1] + '</b><small>' + a[2] + '</small></span></a>').join('') + '</nav>';

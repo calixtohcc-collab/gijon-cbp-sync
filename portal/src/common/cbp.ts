@@ -99,6 +99,7 @@ export const ICON: { [k: string]: string } = {
   avisos: '<path d="M3 11v2l13 5V6z"/><path d="M16 9a3 3 0 0 1 0 6M6 13l1 6h3l-1-5"/>',
   herramientas: '<path d="M14 6l4-4 4 4-4 4zM3 21l9-9M12 12l3 3"/><path d="M3 3l5 5"/>',
   junta: '<rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>',
+  comisiones: '<circle cx="7" cy="8" r="2.5"/><circle cx="17" cy="8" r="2.5"/><circle cx="12" cy="15" r="2.5"/><path d="M9 9.5l2 3.5M15 9.5l-2 3.5M9.5 8h5"/>',
   pin: '<path d="M12 21s-7-6.5-7-12a7 7 0 0 1 14 0c0 5.5-7 12-7 12z"/><circle cx="12" cy="9" r="2.5"/>',
   reloj: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
   flechaIzq: '<path d="M15 5l-7 7 7 7"/>',

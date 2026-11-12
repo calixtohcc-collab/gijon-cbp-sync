@@ -8,7 +8,7 @@ import { IPartido, IRegla, IPista, IAlerta, IJugV, IHueco, IPlazo, sugerir, asig
 export const ESTADOS = ['Oficial', 'Propuesto', 'Validado', 'Pedido al rival', 'Aceptado', 'Contrapropuesta', 'Rechazado', 'Cargado en FBPA'];
 const L_GES = 'Partidos · Gestión'; const L_CLU = 'Partidos · Clubes';
 
-export interface IPartidoG extends IPartido { oficial: Date; comp: string; jornada: string; catPDM: string; }
+export interface IPartidoG extends IPartido { oficial: Date; comp: string; jornada: string; catPDM: string; lugarFbpa?: string; }
 export interface IGest { id: number; pid: number; fechaProp?: Date; pista: string; estado: string; motivo: string; respuesta: string; ok: string; historial: string; fijo: boolean; petHora?: Date; petNota: string; petDe: string; }
 export interface IClub { id: number; nombre: string; corto: string; email: string; tel: string; contacto: string; url: string; direccion: string; equipos: string[]; manual: string[]; manualTxt: string; }
 export interface IEqInfo { pref: string[]; alt: string[]; }
@@ -77,43 +77,53 @@ export function plazoTxt(ctx: IGCtx, p: IPartidoG): string {
 /* ---------- Tabla de partidos de la semana ---------- */
 export function vPartidos(ctx: IGCtx, al: IAlerta[]): string {
   const ps = ctx.semana.slice().sort((a: IPartidoG, b: IPartidoG) => a.fecha.getTime() - b.fecha.getTime());
-  const grav: { [id: number]: string } = {}; al.forEach((a: IAlerta) => a.partidos.forEach((id: number) => { if (!grav[id] || a.grav === 'critica') { grav[id] = a.grav; } }));
+  const grav: { [id: number]: string } = {}; const tit: { [id: number]: string[] } = {};
+  al.filter((a: IAlerta) => a.grav !== 'info').forEach((a: IAlerta) => a.partidos.forEach((id: number) => { if (!grav[id] || a.grav === 'critica') { grav[id] = a.grav; } (tit[id] = tit[id] || []).push(a.titulo); }));
+  const opcPistas = (sel: string, lugar: string): string => {
+    const insts: { [k: string]: IPista[] } = {}; ctx.pistas.forEach((k: IPista) => { (insts[k.inst] = insts[k.inst] || []).push(k); });
+    return '<option value="">' + esc(lugar || 'Sin instalación') + ' (FBPA)</option>' + Object.keys(insts).map((inst: string) => '<optgroup label="' + esc(inst) + '">' +
+      insts[inst].map((k: IPista) => '<option value="' + esc(k.clave) + '"' + (sel === k.clave ? ' selected' : '') + '>' + esc(inst + (k.modulo ? ' · ' + k.modulo : '')) + '</option>').join('') + '</optgroup>').join('');
+  };
   const fila = (p: IPartidoG): string => {
-    const g = ctx.gest[p.id]; const est = g ? g.estado : 'Oficial';
+    const g = ctx.gest[p.id]; const est = g ? g.estado : 'Oficial'; const fijo = !!(g && g.fijo);
     const cambiado = p.fecha.getTime() !== p.oficial.getTime();
     const enFbpa = g && g.fechaProp && Math.abs(g.fechaProp.getTime() - p.oficial.getTime()) < 60000;
-    const mods = ctx.pistas.filter((k: IPista) => norm(k.inst) === norm(p.lugar) || norm(k.alias) === norm(p.lugar));
-    const pista = p.local ? (ctx.esCoord && mods.length > 1 ? '<select class="cbp-select" data-pista="' + p.id + '" style="min-height:34px;font-size:13px"><option value="">Sin asignar</option>' + mods.map((k: IPista) => '<option' + (g && g.pista === k.clave ? ' selected' : '') + ' value="' + esc(k.clave) + '">' + esc(k.modulo || k.inst) + '</option>').join('') + '</select>'
-      : esc(g && g.pista ? (ctx.pistas.filter((k: IPista) => k.clave === g.pista)[0] || { modulo: g.pista }).modulo : (mods[0] ? mods[0].modulo : ''))) : '';
+    const pk = g && g.pista ? ctx.pistas.filter((k: IPista) => k.clave === g.pista)[0] : undefined;
+    const lugar = p.local ? (ctx.esCoord && !fijo ? '<select class="cbp-select" data-pista="' + p.id + '" style="min-height:34px;font-size:13px;max-width:240px">' + opcPistas(g ? g.pista : '', p.lugarFbpa || p.lugar) + '</select>'
+      : esc(pk ? pk.inst + (pk.modulo ? ' · ' + pk.modulo : '') : p.lugar)) : '<small>Fuera · ' + esc(p.lugar) + '</small>';
     const acc: string[] = [];
     const b = (a: string, t: string, pri?: boolean): string => '<button type="button" class="cbp-btn sm' + (pri ? ' pri' : '') + '" data-ac="' + a + '|' + p.id + '"' + (pri ? ' style="color:#FF9F00"' : '') + '>' + t + '</button>';
     const plazoOk = p.local && enPlazo({ ...p, fecha: p.oficial }, ctx.plazo);
-    if (est === 'Oficial' || est === 'Rechazado') { acc.push(b('proponer', 'Proponer cambio', grav[p.id] === 'critica')); acc.push(b('peticion', g && g.petHora ? 'Cambiar petición' : 'Pedir otra hora')); }
-    if (est === 'Propuesto') { if (!g || !g.ok) { acc.push(b('ok', 'Dar OK', !ctx.esCoord)); } if (ctx.esCoord) { acc.push(b('validar', 'Validar', true)); } acc.push(b('proponer', 'Editar')); if (ctx.esCoord) { acc.push(b('descartar', 'Descartar')); } }
-    if (est === 'Validado' && ctx.esCoord) {
-      if (plazoOk) { acc.push(b('cargado', 'Cargado en FBPA', true)); acc.push(b('mensaje', 'Avisar al rival')); }
-      else { acc.push(b('mensaje', p.local ? 'Pedir conformidad al rival' : 'Pedir al rival', true)); acc.push(b('cargado', 'Cargado en FBPA')); }
+    if (!fijo) {
+      if (est === 'Oficial' || est === 'Rechazado') { if (ctx.esCoord) { acc.push(b('proponer', 'Proponer cambio', grav[p.id] === 'critica')); } acc.push(b('peticion', g && g.petHora ? 'Cambiar petición' : 'Pedir otra hora', !ctx.esCoord && grav[p.id] === 'critica')); }
+      if (est === 'Propuesto') { if (!g || !g.ok) { acc.push(b('ok', 'Dar OK', !ctx.esCoord)); } if (ctx.esCoord) { acc.push(b('validar', 'Validar', true)); acc.push(b('proponer', 'Editar')); acc.push(b('descartar', 'Descartar')); } }
+      if (est === 'Validado' && ctx.esCoord) {
+        if (plazoOk) { acc.push(b('cargado', 'Cargado en FBPA', true)); acc.push(b('mensaje', 'Avisar al rival')); }
+        else { acc.push(b('mensaje', p.local ? 'Pedir conformidad al rival' : 'Pedir al rival', true)); acc.push(b('cargado', 'Cargado en FBPA')); }
+        acc.push(b('volver', 'Volver a propuesta')); acc.push(b('descartar', 'Descartar'));
+      }
+      if (est === 'Pedido al rival' && ctx.esCoord) { acc.push(b('respuesta', 'Respuesta del rival', true)); acc.push(b('mensaje', 'Reenviar')); acc.push(b('descartar', 'Descartar')); }
+      if (est === 'Contrapropuesta' && ctx.esCoord) { acc.push(b('aceptarcp', 'Aceptar su hora', true)); acc.push(b('proponer', 'Proponer otra')); acc.push(b('descartar', 'Descartar')); }
+      if (est === 'Aceptado' && ctx.esCoord) { acc.push(b('cargado', 'Cargado en FBPA', true)); acc.push(b('descartar', 'Descartar')); }
     }
-    if (est === 'Pedido al rival' && ctx.esCoord) { acc.push(b('respuesta', 'Respuesta del rival', true)); acc.push(b('mensaje', 'Reenviar')); }
-    if (est === 'Contrapropuesta' && ctx.esCoord) { acc.push(b('aceptarcp', 'Aceptar su hora', true)); acc.push(b('proponer', 'Proponer otra')); }
-    if (est === 'Aceptado' && ctx.esCoord) { acc.push(b('cargado', 'Cargado en FBPA', true)); }
     if (est !== 'Oficial') { acc.push(b('historial', 'Historial')); }
-    const candado = ctx.esCoord ? '<button type="button" class="cbp-lock' + (g && g.fijo ? ' on' : '') + '" data-ac="fijar|' + p.id + '" title="' + (g && g.fijo ? 'Inamovible: el motor no lo mueve. Pulsa para soltarlo' : 'Marcar como inamovible') + '" aria-pressed="' + !!(g && g.fijo) + '">' + (g && g.fijo ? '🔒' : '🔓') + '</button>' : (g && g.fijo ? '<span title="Inamovible">🔒</span>' : '');
-    return '<tr' + (grav[p.id] === 'critica' ? ' style="background:#FFF6F6"' : '') + '><td><b>' + esc(DIA_TXT[p.fecha.getDay()].slice(0, 3)) + ' ' + hm(minDia(p.fecha)) + '</b>' + (cambiado ? '<br><small style="text-decoration:line-through;color:#5c5c5c">' + hm(minDia(p.oficial)) + (p.oficial.toDateString() !== p.fecha.toDateString() ? ' ' + DIA_TXT[p.oficial.getDay()].slice(0, 3) : '') + ' FBPA</small>' : '') + '</td>' +
+    const candado = ctx.esCoord ? '<button type="button" class="cbp-lock' + (fijo ? ' on' : '') + '" data-ac="fijar|' + p.id + '" title="' + (fijo ? 'Inamovible: no se puede proponer ni mover. Pulsa para soltarlo' : 'Marcar como inamovible') + '" aria-pressed="' + fijo + '">' + (fijo ? '🔒' : '🔓') + '</button>' : (fijo ? '<span title="Inamovible">🔒</span>' : '');
+    const icono = grav[p.id] ? '<span class="cbp-al-ico ' + grav[p.id] + '" title="' + esc((tit[p.id] || []).join('\n')) + '">' + (grav[p.id] === 'critica' ? '!' : '·') + '</span>' : '<span class="cbp-al-ico ok" title="Sin conflictos con el horario vigente">✓</span>';
+    return '<tr' + (grav[p.id] === 'critica' ? ' class="con"' : '') + (fijo ? ' data-fijo="1"' : '') + '><td>' + icono + '</td><td><b>' + esc(DIA_TXT[p.fecha.getDay()].slice(0, 3)) + ' ' + hm(minDia(p.fecha)) + '</b>' + (cambiado ? '<br><small style="text-decoration:line-through;color:#5c5c5c">' + hm(minDia(p.oficial)) + (p.oficial.toDateString() !== p.fecha.toDateString() ? ' ' + DIA_TXT[p.oficial.getDay()].slice(0, 3) : '') + ' FBPA</small>' : '') + '</td>' +
       '<td><div style="display:flex;gap:6px;align-items:flex-start">' + candado + '<div><b>' + esc(p.equipo) + '</b><br><small style="color:#5c5c5c">' + (p.local ? 'vs ' : 'en ') + esc(p.rival) + '</small>' +
-      (p.local ? '<br>' + plazoTxt(ctx, p) : '') + (g && g.petHora && (est === 'Oficial' || est === 'Rechazado') ? '<br><small class="cbp-pet">Petición: ' + esc(fCorta(g.petHora)) + (g.petDe ? ' · ' + esc(g.petDe) : '') + '</small>' : '') + '</div></div></td>' +
-      '<td>' + (p.local ? esc(p.lugar) : '<small>Fuera · ' + esc(p.lugar) + '</small>') + '</td><td>' + pista + '</td>' +
+      (p.local ? '<br>' + plazoTxt(ctx, p) : '') + (g && g.petHora && (est === 'Oficial' || est === 'Rechazado') ? '<br><small class="cbp-pet">Petición: ' + esc(fCorta(g.petHora)) + (g.petDe ? ' · ' + esc(g.petDe) : '') + (g.petNota ? ' · ' + esc(g.petNota) : '') + '</small>' : '') + (fijo ? '<br><small style="font-weight:700">Inamovible</small>' : '') + '</div></div></td>' +
+      '<td>' + lugar + '</td>' +
       '<td>' + pillEstado(est) + (est === 'Propuesto' ? '<br><small style="color:' + (g && g.ok ? '#1B5E20' : '#B36F00') + '">' + (g && g.ok ? '✓ OK de ' + esc(g.ok) : 'Falta el OK del entrenador') + '</small>' : g && g.ok ? '<br><small style="color:#1B5E20">✓ ' + esc(g.ok) + '</small>' : '') + (est === 'Contrapropuesta' && g ? '<br><small>' + esc(g.respuesta) + '</small>' : '') +
-      (est === 'Cargado en FBPA' && !enFbpa ? '<br><small style="color:#B36F00">La FBPA aún no lo refleja</small>' : '') + '</td>' +
+      (est === 'Cargado en FBPA' && !enFbpa ? '<br><small style="color:#B36F00">Esperando a que la FBPA lo publique</small>' : '') + '</td>' +
       '<td><div style="display:flex;gap:6px;flex-wrap:wrap">' + acc.join('') + '</div></td></tr>';
   };
+  const nProp = ps.filter((p: IPartidoG) => ctx.gest[p.id] && ctx.gest[p.id].estado === 'Propuesto').length;
   const herramientas = '<div class="cbp-box-h" style="flex-wrap:wrap;gap:8px"><h3 class="cbp-h2" style="font-size:24px;margin:0">Partidos de la semana</h3><div style="display:flex;gap:8px;flex-wrap:wrap">' +
-    (ctx.esCoord && ps.some((p: IPartidoG) => ctx.gest[p.id] && ctx.gest[p.id].estado === 'Propuesto') ? '<button type="button" class="cbp-btn sm pri" data-g="validartodo" style="color:#FF9F00">Validar propuestas (' + ps.filter((p: IPartidoG) => ctx.gest[p.id] && ctx.gest[p.id].estado === 'Propuesto').length + ')</button>' : '') +
-    (ctx.esCoord ? '<button type="button" class="cbp-btn sm" data-g="pistas">Asignar pistas</button>' : '') +
-    '<button type="button" class="cbp-btn sm" data-g="fbpa">Para cargar en la FBPA</button><button type="button" class="cbp-btn sm" data-g="excel">Excel Patronato</button></div></div>';
-  return herramientas + '<p class="cbp-nota" style="margin:0">' + (ctx.esCoord ? 'Flujo: propuesta → OK del entrenador → validación → cargar en la FBPA. Los partidos en casa dentro de plazo no necesitan conformidad del rival. El candado marca partidos que el motor no puede mover.'
+    (ctx.esCoord && nProp ? '<button type="button" class="cbp-btn sm pri" data-g="validartodo" style="color:#FF9F00">Validar propuestas (' + nProp + ')</button>' : '') +
+    '<button type="button" class="cbp-btn sm" data-g="resumen">Resumen para entrenadores</button><button type="button" class="cbp-btn sm" data-g="fbpa">Para cargar en la FBPA</button><button type="button" class="cbp-btn sm" data-g="excel">Excel Patronato</button></div></div>';
+  return herramientas + '<p class="cbp-nota" style="margin:0">' + (ctx.esCoord ? 'Revisa partido a partido: propón cambios, marca inamovibles (🔒) o deja todo como está. El icono de la izquierda solo se pone en verde cuando el horario vigente, incluida la propuesta guardada, no tiene conflictos. Flujo: propuesta → OK del entrenador → validación → carga en la FBPA (o petición al rival si está fuera de plazo o jugamos fuera).'
     : 'Como entrenador puedes pedir otra hora para tus partidos en cualquier momento y dar el OK a las propuestas de coordinación. Validar, pedir cambios a otros clubes y cargar en la FBPA lo hace coordinación deportiva.') + '</p>' +
-    '<section class="cbp-box" style="padding:8px 12px"><div class="cbp-scroll"><table class="cbp-tabla pt"><thead><tr><th>Hora</th><th>Partido</th><th>Instalación</th><th>Pista</th><th>Estado</th><th></th></tr></thead><tbody>' + ps.map(fila).join('') + '</tbody></table></div></section>';
+    '<section class="cbp-box" style="padding:8px 12px"><div class="cbp-scroll"><table class="cbp-tabla pt"><thead><tr><th></th><th>Hora</th><th>Partido</th><th>Instalación y pista</th><th>Estado</th><th></th></tr></thead><tbody>' + ps.map(fila).join('') + '</tbody></table></div></section>';
 }
 
 /* ---------- Acciones ---------- */
@@ -126,6 +136,7 @@ export function enlazarGestion(root: HTMLElement, ctx: IGCtx, al: IAlerta[]): vo
     const err = (x: Error): void => aviso('Error: ' + x.message, true);
     if (a === 'proponer') { modalPropuesta(ctx, p, al); }
     else if (a === 'validar') { guardarGest(ctx, p, { EstadoG: 'Validado' }, 'Validado').then(fin('Propuesta validada')).catch(err); }
+    else if (a === 'volver') { guardarGest(ctx, p, { EstadoG: 'Propuesto' }, 'Devuelto a propuesta').then(fin('Vuelve a estar como propuesta')).catch(err); }
     else if (a === 'fijar') { guardarGest(ctx, p, { Fijo: !(g && g.fijo) }, g && g.fijo ? 'Ya no es inamovible' : 'Marcado como inamovible').then(fin(g && g.fijo ? 'Partido liberado' : 'Partido inamovible')).catch(err); }
     else if (a === 'peticion') { modalPeticion(ctx, p); }
     else if (a === 'ok') { guardarGest(ctx, p, { OKEntrenador: nombreCorto(ctx.usuario) }, 'OK del entrenador').then(fin('OK registrado')).catch(err); }
@@ -142,7 +153,7 @@ export function enlazarGestion(root: HTMLElement, ctx: IGCtx, al: IAlerta[]): vo
   }));
   root.querySelectorAll('[data-g]').forEach((b: Element) => b.addEventListener('click', () => {
     const k = b.getAttribute('data-g');
-    if (k === 'excel') { excelPatronato(ctx); } else if (k === 'fbpa') { listaFbpa(ctx); } else if (k === 'pistas') { autoPistas(ctx); } else if (k === 'semana') { proponerSemana(ctx, al); }
+    if (k === 'excel') { excelPatronato(ctx); } else if (k === 'fbpa') { listaFbpa(ctx); } else if (k === 'resumen') { resumenEntrenadores(ctx); }
     else if (k === 'validartodo') {
       const ps = ctx.semana.filter((p: IPartidoG) => ctx.gest[p.id] && ctx.gest[p.id].estado === 'Propuesto');
       const sinOk = ps.filter((p: IPartidoG) => !ctx.gest[p.id].ok).length;
@@ -272,64 +283,40 @@ function modalRespuesta(ctx: IGCtx, p: IPartidoG): void {
   }, 560);
 }
 
-/* ---------- Pistas automáticas ---------- */
-function autoPistas(ctx: IGCtx): void {
-  const asign: { [id: number]: string } = {}; Object.keys(ctx.gest).forEach((k: string) => { if (ctx.gest[+k].pista) { asign[+k] = ctx.gest[+k].pista; } });
-  const res = asignarPistas(ctx.semana, ctx.pistas, ctx.margen, ctx.eqInfo, asign);
-  const nuevos = ctx.semana.filter((p: IPartidoG) => res[p.id] && !asign[p.id]);
-  if (!nuevos.length) { aviso('Todos los partidos en casa ya tienen pista'); return; }
-  nuevos.reduce((pr: Promise<void>, p: IPartidoG) => pr.then(() => guardarGest(ctx, p, { Pista: res[p.id] }, 'Pista asignada automáticamente: ' + res[p.id])), Promise.resolve())
-    .then(() => { aviso(nuevos.length + ' pistas asignadas'); ctx.recargar(); }).catch((x: Error) => aviso('Error: ' + x.message, true));
-}
-
-/* ---------- Proponer la semana completa ---------- */
-function proponerSemana(ctx: IGCtx, al: IAlerta[]): void {
-  const criticas = al.filter((a: IAlerta) => a.grav === 'critica');
-  if (!criticas.length) { aviso('No hay conflictos que resolver esta semana'); return; }
-  const trabajo: IPartidoG[] = ctx.semana.map((p: IPartidoG) => ({ ...p }));
-  const asign: { [id: number]: string } = {}; Object.keys(ctx.gest).forEach((k: string) => { asign[+k] = ctx.gest[+k].pista; });
-  const propuestas: { p: IPartidoG; h: IHueco; motivo: string }[] = [];
-  const sinSol: string[] = [];
-  criticas.forEach((a: IAlerta) => {
-    const ya = a.partidos.some((id: number) => propuestas.some((x: { p: IPartidoG }) => x.p.id === id)); if (ya) { return; }
-    const cands = a.partidos.map((id: number) => trabajo.filter((p: IPartidoG) => p.id === id)[0]).filter((p: IPartidoG | undefined) => !!p && !(ctx.gest[p.id] && ctx.gest[p.id].estado !== 'Oficial' && ctx.gest[p.id].estado !== 'Rechazado')) as IPartidoG[];
-    cands.sort((x: IPartidoG, y: IPartidoG) => (y.local ? 1 : 0) - (x.local ? 1 : 0));
-    for (const p of cands) {
-      const info = ctx.eqInfo(p);
-      const h = sugerir(p, trabajo, ctx.reglas, ctx.pistas, ctx.margen, ctx.jugs, info.pref, info.alt, asign)[0];
-      if (h) { propuestas.push({ p, h, motivo: justificacion(p, al) }); p.fecha = h.fecha; if (h.pista) { asign[p.id] = h.pista; } return; }
-    }
-    sinSol.push(a.titulo);
-  });
-  const resto = analizar(trabajo, ctx.reglas, ctx.pistas, ctx.margen, ctx.jugs).filter((a: IAlerta) => a.grav === 'critica').length;
-  const html = (propuestas.length ? '<table class="cbp-tabla"><thead><tr><th>Partido</th><th>FBPA</th><th>Propuesta</th></tr></thead><tbody>' + propuestas.map((x: { p: IPartidoG; h: IHueco }) =>
-    '<tr><td><b>' + esc(x.p.equipo) + '</b><br><small>' + (x.p.local ? 'en casa' : 'fuera, a pedir al rival') + '</small></td><td>' + fTxt(x.p.oficial) + '</td><td><b>' + fTxt(x.h.fecha) + '</b>' + (x.h.pista ? '<br><small>' + esc(x.h.pista) + '</small>' : '') + '</td></tr>').join('') + '</tbody></table>' : '') +
-    (sinSol.length ? '<p class="cbp-nota" style="color:#B00020">Sin solución automática: ' + esc(sinSol.join('; ')) + '</p>' : '') +
-    '<p class="cbp-nota">Con estos cambios quedarían <b>' + resto + '</b> conflicto' + (resto === 1 ? '' : 's') + '. Se guardan como «Propuesto» para que los entrenadores den el OK y coordinación valide.</p>' +
-    '<div class="cbp-btns"><button type="button" class="cbp-btn" data-c="1">Cancelar</button>' + (propuestas.length ? '<button type="button" class="cbp-btn pri" data-ok="1">Guardar ' + propuestas.length + ' propuesta' + (propuestas.length === 1 ? '' : 's') + '</button>' : '') + '</div>';
-  const body = abrirModal('Propuesta de la semana', html, 700);
-  (body.querySelector('[data-c]') as HTMLElement).addEventListener('click', cerrarModal);
-  const ok = body.querySelector('[data-ok]') as HTMLElement;
-  if (ok) {
-    ok.addEventListener('click', () => {
-      propuestas.reduce((pr: Promise<void>, x: { p: IPartidoG; h: IHueco; motivo: string }) => pr.then(() => {
-        const orig = ctx.semana.filter((q: IPartidoG) => q.id === x.p.id)[0];
-        const c: { [k: string]: any } = { FechaPropuesta: x.h.fecha.toISOString(), EstadoG: 'Propuesto', Motivo: x.motivo, OKEntrenador: '' }; // eslint-disable-line @typescript-eslint/no-explicit-any
-        if (x.h.pista) { c.Pista = x.h.pista; }
-        return guardarGest(ctx, orig, c, 'Propuesta automática: ' + fTxt(x.h.fecha));
-      }), Promise.resolve()).then(() => { cerrarModal(); aviso('Propuestas guardadas'); ctx.recargar(); }).catch((x: Error) => aviso('Error: ' + x.message, true));
-    });
-  }
-}
-
 /* ---------- Para cargar en la FBPA ---------- */
 function listaFbpa(ctx: IGCtx): void {
-  const ps = ctx.semana.filter((p: IPartidoG) => { const g = ctx.gest[p.id]; return g && (g.estado === 'Validado' || g.estado === 'Aceptado' || g.estado === 'Pedido al rival' || g.estado === 'Cargado en FBPA') && g.fechaProp; });
-  const html = ps.length ? '<p class="cbp-nota" style="margin:0">Cambios para pasar a la intranet de la federación. La sincronización nocturna comprueba si la FBPA ya los refleja.</p><table class="cbp-tabla"><thead><tr><th>Partido</th><th>Ahora en FBPA</th><th>Cambiar a</th><th>Estado</th></tr></thead><tbody>' +
-    ps.map((p: IPartidoG) => { const g = ctx.gest[p.id]; const ya = g.fechaProp && Math.abs(g.fechaProp.getTime() - p.oficial.getTime()) < 60000;
-      return '<tr><td><b>' + esc(p.equipo) + '</b><br><small>' + (p.local ? 'vs ' : 'en ') + esc(p.rival) + (p.jornada ? ' · J' + esc(p.jornada) : '') + '</small></td><td>' + fTxt(p.oficial) + '</td><td><b>' + fTxt(g.fechaProp as Date) + '</b>' + (g.pista ? '<br><small>' + esc(g.pista) + '</small>' : '') + '</td><td>' + (ya ? '<span class="cbp-fpill ok">Ya en FBPA</span>' : pillEstado(g.estado)) + (g.estado === 'Pedido al rival' ? '<br><small>esperando al rival</small>' : '') + '</td></tr>'; }).join('') + '</tbody></table>'
+  const ps = ctx.semana.filter((p: IPartidoG) => { const g = ctx.gest[p.id]; return g && (g.estado === 'Validado' || g.estado === 'Aceptado' || g.estado === 'Pedido al rival' || g.estado === 'Cargado en FBPA') && g.fechaProp; })
+    .sort((a: IPartidoG, b: IPartidoG) => a.fecha.getTime() - b.fecha.getTime());
+  const dd = (d: Date): string => ('0' + d.getDate()).slice(-2) + '/' + ('0' + (d.getMonth() + 1)).slice(-2) + '/' + d.getFullYear();
+  const copia = (v: string): string => '<span class="cbp-cp"><code>' + esc(v) + '</code><button type="button" class="cbp-cp-b" data-cp="' + esc(v) + '" title="Copiar" aria-label="Copiar ' + esc(v) + '">⧉</button></span>';
+  const campo = (p: IPartidoG, g: IGest): string => { const k = g.pista ? ctx.pistas.filter((x: IPista) => x.clave === g.pista)[0] : undefined; return k ? k.alias || k.inst : p.lugarFbpa || p.lugar; };
+  const html = ps.length ? '<p class="cbp-nota" style="margin:0">Para la «Solicitud de cambio de partido» de la intranet: fecha nueva, hora nueva y campo nuevo, cada uno con su botón de copiar. La sincronización nocturna comprueba si la FBPA ya lo publica; cuando lo hace, el partido queda con el nuevo horario oficial y sus alertas se recalculan solas.</p><div class="cbp-scroll"><table class="cbp-tabla pt"><thead><tr><th>Partido</th><th>Original</th><th>Fecha nueva</th><th>Hora nueva</th><th>Campo nuevo</th><th>Estado</th></tr></thead><tbody>' +
+    ps.map((p: IPartidoG) => { const g = ctx.gest[p.id]; const f = g.fechaProp as Date; const ya = Math.abs(f.getTime() - p.oficial.getTime()) < 60000;
+      return '<tr><td><b>' + esc(p.equipo) + '</b><br><small>' + (p.local ? 'vs ' : 'en ') + esc(p.rival) + (p.jornada ? ' · J' + esc(p.jornada) : '') + '</small></td><td><small>' + dd(p.oficial) + ' ' + hm(minDia(p.oficial)) + '</small></td>' +
+        '<td>' + copia(dd(f)) + '</td><td>' + copia(hm(minDia(f))) + '</td><td>' + (p.local ? copia(campo(p, g)) : '<small>' + esc(p.lugar) + '</small>') + '</td>' +
+        '<td>' + (ya ? '<span class="cbp-fpill ok">Ya en FBPA</span>' : pillEstado(g.estado)) + (g.estado === 'Pedido al rival' ? '<br><small>esperando al rival</small>' : '') + '</td></tr>'; }).join('') + '</tbody></table></div>'
     : '<p class="cbp-nota">No hay cambios validados pendientes de cargar esta semana.</p>';
-  abrirModal('Para cargar en la FBPA', html, 760);
+  const body = abrirModal('Para cargar en la FBPA', html, 860);
+  body.querySelectorAll('[data-cp]').forEach((b: Element) => b.addEventListener('click', () => {
+    const v = b.getAttribute('data-cp') || '';
+    navigator.clipboard.writeText(v).then(() => { b.textContent = '✓'; b.classList.add('ok'); window.setTimeout(() => { b.textContent = '⧉'; b.classList.remove('ok'); }, 1500); }, () => aviso('No se pudo copiar', true));
+  }));
+}
+
+/* ---------- Resumen para los entrenadores afectados ---------- */
+function resumenEntrenadores(ctx: IGCtx): void {
+  const estTxt: { [e: string]: string } = { 'Propuesto': 'propuesta, falta tu OK', 'Validado': 'validado por coordinación', 'Pedido al rival': 'pendiente de que acepte el rival', 'Contrapropuesta': 'el rival propone otra hora', 'Aceptado': 'aceptado por el rival', 'Cargado en FBPA': 'cargado en la FBPA' };
+  const ps = ctx.semana.filter((p: IPartidoG) => { const g = ctx.gest[p.id]; return g && estTxt[g.estado] && g.fechaProp; }).sort((a: IPartidoG, b: IPartidoG) => a.equipo.localeCompare(b.equipo) || a.fecha.getTime() - b.fecha.getTime());
+  if (!ps.length) { aviso('No hay cambios de horario esta semana'); return; }
+  const lineas = ps.map((p: IPartidoG) => { const g = ctx.gest[p.id]; const f = g.fechaProp as Date; const k = g.pista ? ctx.pistas.filter((x: IPista) => x.clave === g.pista)[0] : undefined;
+    return '• ' + p.equipo + ' (' + (p.local ? 'vs ' : 'en ') + p.rival + '): ' + fTxt(p.oficial) + ' → ' + fTxt(f) + (k ? ' en ' + k.inst + (k.modulo ? ' ' + k.modulo : '') : '') + ' · ' + estTxt[g.estado] + '.'; });
+  const lun = new Date(ps[0].fecha); lun.setDate(lun.getDate() - ((lun.getDay() + 6) % 7));
+  const txt = '🏀 Cambios de horario · semana del ' + lun.getDate() + ' de ' + MESES[lun.getMonth()].toLowerCase() + '\n\n' + lineas.join('\n') + '\n\nSi algo no os encaja, decídnoslo o pedid otra hora desde el portal (Partidos).\nCoordinación deportiva · Gijón CBP';
+  const body = abrirModal('Resumen para entrenadores', '<p class="cbp-nota" style="margin:0">Cambios de esta semana con su estado, listos para el grupo de entrenadores.</p><label class="cbp-field">Mensaje<textarea name="txt" rows="12">' + esc(txt) + '</textarea></label>' +
+    '<div class="cbp-btns" style="justify-content:flex-start"><button type="button" class="cbp-btn pri" data-copiar="1" style="color:#FF9F00">Copiar</button><a class="cbp-btn" data-wa="1" target="_blank" rel="noopener" href="https://wa.me/?text=' + encodeURIComponent(txt) + '">Abrir en WhatsApp</a></div>', 640);
+  const ta = body.querySelector('[name="txt"]') as HTMLTextAreaElement;
+  (body.querySelector('[data-copiar]') as HTMLElement).addEventListener('click', () => { navigator.clipboard.writeText(ta.value).then(() => aviso('Resumen copiado')); });
+  (body.querySelector('[data-wa]') as HTMLAnchorElement).addEventListener('click', (e: Event) => { (e.currentTarget as HTMLAnchorElement).href = 'https://wa.me/?text=' + encodeURIComponent(ta.value); });
 }
 
 /* ---------- Excel del Patronato ---------- */

@@ -138,7 +138,7 @@ async function main() {
   mkdirSync('docs/ics', { recursive: true });
   const equipos = [...new Set(finales.map((e) => e.Equipo).filter((e) => e && e !== 'Todo el club'))].sort();
   writeFileSync('docs/ics/todo-el-club.ics', ics('Gijón CBP – Todo el club', finales));
-  for (const eq of equipos) { writeFileSync(`docs/ics/${slug(eq)}.ics`, ics('Gijón CBP – ' + eq, finales.filter((e) => e.Equipo === eq || e.Equipo === 'Todo el club'))); }
+  for (const eq of equipos) { writeFileSync(`docs/ics/${slug(eq)}.ics`, ics('Gijón CBP – ' + eq, finales.filter((e) => e.Equipo === eq))); }
   writeFileSync('docs/equipos.json', JSON.stringify(equipos.map((e) => ({ equipo: e, archivo: `ics/${slug(e)}.ics` })), null, 2));
   writeFileSync('docs/ultima-actualizacion.txt', new Date().toISOString() + `\n${partidos.length} partidos FBPA · ${nuevos} nuevos · ${cambios} actualizados\n`);
   console.log(`ICS: ${equipos.length + 1} calendarios publicados`);

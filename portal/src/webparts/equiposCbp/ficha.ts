@@ -72,7 +72,7 @@ function pintar(el: HTMLElement, o: IFichaOpts, jugs: IJug[], asis: IAsis[], vin
     '<div class="cbp-fstats">' + stats + '</div></section>';
 
   const herr = (tab: string, txt: string, pri?: boolean, extra?: string): string =>
-    '<a class="cbp-btn' + (pri ? ' pri' : '') + '" data-herr="' + tab + '" href="' + esc(o.w + '/SitePages/Herramientas.aspx#' + tab + (extra || '')) + '"' + (pri ? ' style="color:#FF9F00"' : '') + '>' + txt + '</a>';
+    '<a class="cbp-btn' + (pri ? ' pri' : '') + '" data-herr="' + tab + '" href="' + esc(o.w + '/SitePages/Herramientas.aspx#' + tab + (extra || '') + '&eq=' + encodeURIComponent(e.nombre)) + '"' + (pri ? ' style="color:#FF9F00"' : '') + '>' + txt + '</a>';
   const acciones = '<div class="cbp-facciones">' +
     (siguiente ? herr('convocatorias', 'Convocar próximo partido', true, '=' + siguiente.id) : '') +
     herr('asistencia', 'Pasar lista') + herr('sesiones', 'Preparar sesión') +

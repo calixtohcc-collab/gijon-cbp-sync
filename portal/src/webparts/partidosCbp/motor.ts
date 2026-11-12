@@ -129,11 +129,12 @@ export function analizar(ps: IPartido[], reglas: IRegla[], pistas: IPista[], mar
         if (simult.length < 2 || lista.slice(0, i).some((q: IPartido) => minDia(q.fecha) === s)) { return; }
         const libres = mods.filter((m: IPista) => ventanas(m).some((v: IVentana) => s >= v.desde && s < v.hasta));
         const cap = Math.max(libres.length, 0);
-        if (simult.length > cap) {
+        // Sin ningún módulo reservado a esa hora ya lo avisa «Fuera del horario reservado»: aquí solo se mira la capacidad reservada
+        if (cap > 0 && simult.length > cap) {
           const ya = out.filter((a: IAlerta) => a.tipo === 'saturacion' && simult.every((q: IPartido) => a.partidos.indexOf(q.id) >= 0))[0];
           if (ya) { return; }
           out.push({ tipo: 'saturacion', grav: 'critica', partidos: simult.map((q: IPartido) => q.id), titulo: inst + ' saturado el ' + DIA_TXT[dia] + ' a las ' + hm(s),
-            detalle: simult.length + ' partidos a la vez (' + simult.map((q: IPartido) => q.equipo + ' ' + hm(minDia(q.fecha))).join(', ') + ') y ' + (cap ? 'solo ' + cap + ' módulo' + (cap === 1 ? '' : 's') + ' reservado' + (cap === 1 ? '' : 's') + ' (' + libres.map((m: IPista) => m.modulo).join(', ') + ')' : 'ningún módulo reservado a esa hora') + '. Se cuenta ' + margen + ' min de margen entre partidos.',
+            detalle: simult.length + ' partidos a la vez (' + simult.map((q: IPartido) => q.equipo + ' ' + hm(minDia(q.fecha)) + '–' + hm(minDia(q.fecha) + q.dur)).join(', ') + ') y el club solo tiene reservado' + (cap === 1 ? ' ' : 's ') + cap + ' módulo' + (cap === 1 ? '' : 's') + ' a esa hora (' + libres.map((m: IPista) => m.modulo).join(', ') + ').' + (margen ? ' Se cuentan ' + margen + ' min de margen entre partidos.' : ''),
             accion: 'Escalonar las horas o mover alguno a otra instalación (p. ej. Gijón Sur).' });
         }
       });
@@ -325,6 +326,7 @@ function pares(ps: IPartido[], reglas: IRegla[], pistas: IPista[], jugs: IJugV[]
 
 /** Horas posibles para un partido: en casa, dentro de las reservas de sus pistas; fuera, horas oficiales de la franja (a pedir al rival) */
 function candidatos(p: IPartido, pistas: IPista[], pref: string[], alt: string[], soloMismoDia: boolean): ICand[] {
+  if (!FRANJAS[p.franja]) { return []; } // sin franjas cargadas (p. ej. competición nacional): el motor no lo mueve, solo a mano
   const base = new Date(p.fecha.getFullYear(), p.fecha.getMonth(), p.fecha.getDate());
   const dias: Date[] = [base];
   if (!soloMismoDia) {

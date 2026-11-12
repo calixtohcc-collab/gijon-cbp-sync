@@ -45,6 +45,15 @@ const CSS5 = `
 .cbp-tl-carril{position:relative;background-image:repeating-linear-gradient(90deg,#F1EEE8 0,#F1EEE8 1px,transparent 1px,transparent calc(100%/14))}
 .cbp-tl-res{position:absolute;top:0;bottom:0;background:rgba(255,159,0,.10);border-left:2px solid rgba(255,159,0,.5);border-right:2px solid rgba(255,159,0,.5)}
 .cbp-tl-p{position:absolute;height:26px;border-radius:7px;background:#090909;color:#fff;font-size:11.5px;font-weight:700;padding:0 7px;display:flex;align-items:center;gap:5px;white-space:nowrap;overflow:hidden;cursor:pointer;border:0;font-family:inherit}
+
+.cbp-tl-p{flex-direction:column;align-items:flex-start;justify-content:center;gap:0;line-height:1.15;height:40px!important;padding:0 7px}
+.cbp-tl-p b{font-size:11.5px}.cbp-tl-p span{font-size:11px;font-weight:600;opacity:.9;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.cbp-al-det{background:#fff;border:1px solid #E6E3DC;border-radius:14px;padding:10px 14px}
+.cbp-al-det summary{cursor:pointer;font-size:14px;padding:4px 0}
+.cbp-al-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:10px;margin-top:10px}
+.cbp-al-grid .cbp-alerta{padding:10px 12px 10px 0}.cbp-al-grid .cbp-alerta p{font-size:13px}
+.cbp-esc-banda{background:#090909;color:#fff;border-radius:12px;padding:10px 14px;font-size:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.cbp-esc-banda b{color:#FF9F00}.cbp-esc-banda .cbp-btn{background:#fff}
 .cbp-tl-p.fuera{background:#fff;color:#090909;border:1.5px dashed #090909}
 .cbp-tl-p.critica{background:#B00020;color:#fff;border:0}.cbp-tl-p.aviso{box-shadow:inset 0 0 0 2px #FF9F00}
 .cbp-tl-p.fuera.critica{background:#FDE7E9;color:#B00020;border:1.5px dashed #B00020}
@@ -70,6 +79,7 @@ export default class PartidosCbpWebPart extends BaseClientSideWebPart<IPartidosC
   private sel: number = -1;
   private jugs: IJugV[] = [];
   private est: IEscEstado = nuevoEstado();
+  private alAbiertas: boolean = false;
 
   protected onInit(): Promise<void> {
     cargarEstilos(); cargarEstilosUi(); cargarEstilos3(); cargarEstilos4();
@@ -78,7 +88,7 @@ export default class PartidosCbpWebPart extends BaseClientSideWebPart<IPartidosC
     return this.cargar();
   }
 
-  private get margen(): number { return this.properties.margen === undefined ? 30 : this.properties.margen; }
+  private get margen(): number { return this.properties.margen === undefined ? 0 : this.properties.margen; }
   private get plazo(): IPlazo {
     const d = DIAS_PLAZO.indexOf((this.properties.plazoDia || '').toLowerCase()); const h = (this.properties.plazoHora || '').match(/^(\d{1,2}):(\d{2})$/);
     return { dia: d >= 0 ? d : PLAZO_DEF.dia, hora: h ? +h[1] * 60 + +h[2] : PLAZO_DEF.hora };
@@ -105,7 +115,8 @@ export default class PartidosCbpWebPart extends BaseClientSideWebPart<IPartidosC
         const q = porNombre[e.equipo]; const g = this.gest[e.id];
         const vigente = g && g.fechaProp && g.estado !== 'Rechazado' && g.estado !== 'Oficial' ? g.fechaProp : e.fecha;
         const jm = e.notas.match(/Jornada (\d+)/);
-        return { id: e.id, equipo: e.equipo, codigo: q ? q.codigo : '', fecha: vigente, oficial: e.fecha, local: e.local, rival: e.rival, lugar: e.lugar, sinHora: /Hora por confirmar/i.test(e.notas), dur: q ? q.dur : 90, franja: q ? q.franja : 'Sin franja',
+        const pk = e.local && g && g.pista ? this.pistas.filter((k: IPista) => k.clave === g.pista)[0] : undefined;
+        return { id: e.id, equipo: e.equipo, codigo: q ? q.codigo : '', fecha: vigente, oficial: e.fecha, local: e.local, rival: e.rival, lugar: pk ? (pk.alias || pk.inst) : e.lugar, lugarFbpa: e.lugar, sinHora: /Hora por confirmar/i.test(e.notas), dur: q ? q.dur : 90, franja: q ? q.franja : 'Sin franja',
           comp: e.notas.split(' · ')[0] || '', jornada: jm ? jm[1] : '', catPDM: q ? q.catPDM : '' };
       });
       // La FBPA ya refleja el cambio: se marca como cargado
@@ -156,7 +167,9 @@ export default class PartidosCbpWebPart extends BaseClientSideWebPart<IPartidosC
     if (this.est.semanaKey !== clave) { this.est = nuevoEstado(); this.est.semanaKey = clave; }
     if (this.tab === 'semana') {
       const v = vista(this.est, ps, al);
-      cuerpo = (this.esCoord && ps.length ? vEscenarios(gctx, this.est, al) : '') + this.vSemana(v.ps, v.al, v.movidos) + (ps.length ? vPartidos(gctx, al) : '');
+      const escSel = this.est.res && this.est.sel ? this.est.res.filter((e: { clave: string }) => e.clave === this.est.sel)[0] : undefined;
+      const banda = escSel ? '<div class="cbp-esc-banda">Estás viendo el escenario <b>«' + esc(escSel.nombre) + '»</b> sobre el gantt. <button type="button" class="cbp-btn sm" data-esc="">Volver a la situación actual</button> <a href="#cbp-motor" class="cbp-btn sm">Ir al motor</a></div>' : '';
+      cuerpo = banda + this.vSemana(v.ps, v.al, v.movidos) + (ps.length ? vPartidos(gctx, al) : '') + (this.esCoord && ps.length ? '<div id="cbp-motor"></div>' + vEscenarios(gctx, this.est, al) : '');
     } else if (this.tab === 'temporada') { cuerpo = this.vTemporada(); }
     else if (this.tab === 'clubes') { const riv: string[] = []; this.partidos.forEach((p: IPartidoG) => { if (riv.indexOf(p.rival) < 0) { riv.push(p.rival); } }); cuerpo = vClubes(gctx, riv); } else { cuerpo = this.vReglas(); }
     this.domElement.innerHTML = '<div class="cbp"><div class="cbp-wrap" style="padding-top:20px;gap:18px">' + hero + tabs + cuerpo + '</div></div>';
@@ -171,7 +184,7 @@ export default class PartidosCbpWebPart extends BaseClientSideWebPart<IPartidosC
     if (!ps.length) { return '<div class="cbp-vacio">No hay partidos publicados por la FBPA esta semana.</div>'; }
     const grav: { [id: number]: string } = {};
     al.forEach((a: IAlerta) => a.partidos.forEach((id: number) => { if (!grav[id] || a.grav === 'critica') { grav[id] = a.grav; } }));
-    const alertas = al.length ? al.map((a: IAlerta, i: number) => '<div class="cbp-alerta ' + a.grav + (this.sel === i ? ' sel' : '') + '" data-al="' + i + '" role="button" tabindex="0"><div><h4>' + esc(a.titulo) + '</h4><p>' + esc(a.detalle) + '</p><div class="acc">' + esc(a.accion) + '</div>' + (a.grav !== 'info' ? '<button type="button" class="cbp-btn sm" data-sol="' + (ps.filter((p: IPartido) => a.partidos.indexOf(p.id) >= 0 && p.local)[0] || ps.filter((p: IPartido) => a.partidos.indexOf(p.id) >= 0)[0] || { id: 0 }).id + '" style="margin-top:8px">Proponer solución</button>' : '') + '</div></div>').join('')
+    const alertas = al.length ? al.map((a: IAlerta, i: number) => '<div class="cbp-alerta ' + a.grav + (this.sel === i ? ' sel' : '') + '" data-al="' + i + '" role="button" tabindex="0"><div><h4>' + esc(a.titulo) + '</h4><p>' + esc(a.detalle) + '</p><div class="acc">' + esc(a.accion) + '</div></div></div>').join('')
       : '<div class="cbp-vacio" style="border-style:solid;background:#E8F5E9;color:#1B5E20;font-weight:700">Semana limpia: sin conflictos con las reglas configuradas.</div>';
     const hl = this.sel >= 0 && al[this.sel] ? al[this.sel].partidos : [];
 
@@ -188,19 +201,20 @@ export default class PartidosCbpWebPart extends BaseClientSideWebPart<IPartidosC
         const lista = filas[k];
         const carriles: number[] = []; const lane: { [id: number]: number } = {};
         lista.forEach((p: IPartido) => { const s = minDia(p.fecha); let i = carriles.findIndex((fin: number) => fin <= s); if (i < 0) { i = carriles.length; carriles.push(0); } carriles[i] = s + p.dur; lane[p.id] = i; });
-        const alto = Math.max(1, carriles.length) * 30 + 6;
+        const alto = Math.max(1, carriles.length) * 44 + 6;
         const mods = this.pistas.filter((x: IPista) => x.inst === k);
         const res = mods.map((m: IPista) => m.disp.filter((v: { dia: number }) => v.dia === d.getDay()).map((v: { desde: number; hasta: number }) => '<div class="cbp-tl-res" style="left:' + pos(v.desde) + '%;width:' + (pos(v.hasta) - pos(v.desde)) + '%" title="Reserva ' + esc(m.modulo) + ' ' + hm(v.desde) + '–' + hm(v.hasta) + '"></div>').join('')).join('');
-        const nMods = mods.filter((m: IPista) => m.disp.some((v: { dia: number }) => v.dia === d.getDay())).length;
+        const resTxt = mods.map((m: IPista) => m.disp.filter((v: { dia: number }) => v.dia === d.getDay()).map((v: { desde: number; hasta: number }) => (m.modulo || m.inst) + ' ' + hm(v.desde).replace(':00', '') + '–' + hm(v.hasta).replace(':00', '')).join(', ')).filter((x: string) => x);
         const bloques = lista.map((p: IPartido) => { const s = minDia(p.fecha); const antes = mov[p.id];
-          const fantasma = antes && antes.toDateString() === p.fecha.toDateString() ? '<span class="cbp-tl-p ghost' + (p.local ? '' : ' fuera') + '" style="left:' + pos(minDia(antes)) + '%;width:' + Math.max(6, pos(minDia(antes) + p.dur) - pos(minDia(antes))) + '%;top:' + (3 + lane[p.id] * 30) + 'px">' + hm(minDia(antes)) + '</span>' : '';
-          return fantasma + '<button type="button" class="cbp-tl-p' + (p.local ? '' : ' fuera') + (grav[p.id] ? ' ' + grav[p.id] : '') + (antes ? ' mov' : '') + (hl.indexOf(p.id) >= 0 ? ' hl' : '') + '" data-p="' + p.id + '" style="left:' + pos(s) + '%;width:' + Math.max(6, pos(s + p.dur) - pos(s)) + '%;top:' + (3 + lane[p.id] * 30) + 'px" title="' + esc(p.equipo + ' · ' + hm(s) + ' · ' + (p.local ? 'vs ' : 'en ') + p.rival + (p.local ? '' : ' · ' + p.lugar) + (antes ? ' · antes ' + DIA_TXT[antes.getDay()].slice(0, 3) + ' ' + hm(minDia(antes)) : '')) + '">' + hm(s) + ' ' + esc(p.codigo || p.equipo) + '</button>'; }).join('');
-        return '<div class="cbp-tl-fila"><b>' + esc(k.charAt(0) === '~' ? 'Fuera de casa' : k) + '<small>' + (k.charAt(0) === '~' ? lista.length + ' desplazamiento' + (lista.length === 1 ? '' : 's') : nMods + ' módulo' + (nMods === 1 ? '' : 's') + ' reservado' + (nMods === 1 ? '' : 's')) + '</small></b><div class="cbp-tl-carril" style="height:' + alto + 'px">' + res + bloques + '</div></div>';
+          const fantasma = antes && antes.toDateString() === p.fecha.toDateString() ? '<span class="cbp-tl-p ghost' + (p.local ? '' : ' fuera') + '" style="left:' + pos(minDia(antes)) + '%;width:' + Math.max(6, pos(minDia(antes) + p.dur) - pos(minDia(antes))) + '%;top:' + (3 + lane[p.id] * 44) + 'px">' + hm(minDia(antes)) + '</span>' : '';
+          return fantasma + '<button type="button" class="cbp-tl-p' + (p.local ? '' : ' fuera') + (grav[p.id] ? ' ' + grav[p.id] : '') + (antes ? ' mov' : '') + (hl.indexOf(p.id) >= 0 ? ' hl' : '') + '" data-p="' + p.id + '" style="left:' + pos(s) + '%;width:' + Math.max(6, pos(s + p.dur) - pos(s)) + '%;top:' + (3 + lane[p.id] * 44) + 'px" title="' + esc(p.equipo + ' · ' + hm(s) + ' · ' + (p.local ? 'vs ' : 'en ') + p.rival + (p.local ? '' : ' · ' + p.lugar) + (antes ? ' · antes ' + DIA_TXT[antes.getDay()].slice(0, 3) + ' ' + hm(minDia(antes)) : '')) + '"><b>' + hm(s) + '</b><span>' + esc(p.codigo || p.equipo) + '</span></button>'; }).join('');
+        return '<div class="cbp-tl-fila"><b>' + esc(k.charAt(0) === '~' ? 'Fuera de casa' : k) + '<small>' + (k.charAt(0) === '~' ? lista.length + ' desplazamiento' + (lista.length === 1 ? '' : 's') : (resTxt.length ? 'Reservado: ' + resTxt.map(esc).join('<br>') : 'Sin reserva del club ese día')) + '</small></b><div class="cbp-tl-carril" style="height:' + alto + 'px">' + res + bloques + '</div></div>';
       }).join('') + '</div>';
     }).join('');
     const ley = '<div class="cbp-tl-ley">' + (Object.keys(mov).length ? '<span><i style="outline:2px dashed #FF9F00"></i>Movido por el escenario</span>' : '') + '<span><i style="background:#090909"></i>En casa</span><span><i style="border:1.5px dashed #090909"></i>Fuera</span><span><i style="background:#B00020"></i>Conflicto</span><span><i style="box-shadow:inset 0 0 0 2px #FF9F00"></i>Aviso</span><span><i style="background:rgba(255,159,0,.2)"></i>Pista reservada</span></div>';
-    return '<div class="cbp-of-grid" style="grid-template-columns:minmax(0,1fr) minmax(0,1.6fr)"><div class="cbp-col"><div class="cbp-box-h"><h3 class="cbp-h2" style="font-size:24px;margin:0">Alertas</h3><span class="cbp-nota">' + al.length + '</span></div>' + alertas + '</div>' +
-      '<div class="cbp-col">' + tl + ley + '</div></div>';
+    const nC = al.filter((a: IAlerta) => a.grav === 'critica').length; const nA = al.filter((a: IAlerta) => a.grav === 'aviso').length; const nI = al.length - nC - nA;
+    return '<div class="cbp-col" style="gap:12px">' + tl + ley + '</div>' +
+      '<details class="cbp-al-det"' + (this.alAbiertas ? ' open' : '') + '><summary><b>Detalle de alertas</b> · ' + (al.length ? nC + ' conflicto' + (nC === 1 ? '' : 's') + ', ' + nA + ' aviso' + (nA === 1 ? '' : 's') + (nI ? ', ' + nI + ' pendiente' + (nI === 1 ? '' : 's') : '') : 'ninguna') + '</summary>' + (al.length ? '<div class="cbp-al-grid">' + alertas + '</div>' : alertas) + '</details>';
   }
 
   /* ---------- Temporada ---------- */
@@ -252,6 +266,7 @@ export default class PartidosCbpWebPart extends BaseClientSideWebPart<IPartidosC
     q('[data-tab]').forEach((b: HTMLElement) => b.addEventListener('click', () => { this.tab = b.getAttribute('data-tab') as Tab; this.sel = -1; this.render(); }));
     q('[data-sem]').forEach((b: HTMLElement) => b.addEventListener('click', () => { this.semana = new Date(this.semana.getTime() + +(b.getAttribute('data-sem') || 0) * 7 * DIA + 3 * 3600000); this.semana = lunes(this.semana); this.sel = -1; this.tab = this.tab === 'reglas' ? 'semana' : this.tab; this.render(); }));
     q('[data-ir]').forEach((b: HTMLElement) => b.addEventListener('click', () => { this.semana = lunes(new Date(+(b.getAttribute('data-ir') || 0) + 3 * 3600000)); this.tab = 'semana'; this.sel = -1; this.render(); window.scrollTo(0, 0); }));
+    q('.cbp-al-det').forEach((d: HTMLElement) => d.addEventListener('toggle', () => { this.alAbiertas = (d as HTMLDetailsElement).open; }));
     q('[data-al]').forEach((b: HTMLElement) => { const f = (): void => { const i = +(b.getAttribute('data-al') || 0); this.sel = this.sel === i ? -1 : i; this.render(); }; b.addEventListener('click', f); b.addEventListener('keydown', (e: KeyboardEvent) => { if (e.key === 'Enter') { f(); } }); });
     q('[data-p]').forEach((b: HTMLElement) => b.addEventListener('click', () => { const id = +(b.getAttribute('data-p') || 0); const i = al.findIndex((a: IAlerta) => a.partidos.indexOf(id) >= 0); this.sel = i; this.render(); }));
 
